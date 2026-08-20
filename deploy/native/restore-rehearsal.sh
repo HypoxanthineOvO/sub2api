@@ -36,6 +36,7 @@ allocator_source=/home/heyx/.config/llm-proxy/nodes.json
 selected_node_source=/home/heyx/Workspace/Hypo/Hypo-LLM/ops/sub2api/selected-node-aggregator/config.release.local.json
 required_release=${VSP_NATIVE_RELEASE:-}
 installed_release=$(basename "$(readlink -f /opt/vsp-sub2api/current)")
+pricing_fallback=/opt/vsp-sub2api/current/resources/model-pricing/model_prices_and_context_window.json
 timestamp=$(date +%Y%m%dT%H%M%S)
 snapshot_dir="$data_root/snapshots/$timestamp"
 temp_dir=$(mktemp -d /run/vsp-sub2api-rehearsal-restore.XXXXXX)
@@ -78,6 +79,10 @@ if [[ -z $required_release ]]; then
 fi
 if [[ $installed_release != "$required_release" ]]; then
   echo "Installed native release is $installed_release; expected $required_release. Run deploy/native/install.sh first." >&2
+  exit 1
+fi
+if [[ ! -s $pricing_fallback ]]; then
+  echo "Installed native pricing fallback is missing or empty: $pricing_fallback" >&2
   exit 1
 fi
 installed_working_directory=$(systemctl show vsp-sub2api-app@rehearsal.service --property WorkingDirectory --value)
@@ -146,6 +151,11 @@ if [[ $restore_mode == resume ]]; then
     echo 'Existing rehearsal snapshot directory is missing.' >&2
     exit 1
   fi
+  python3 "$repo_root/deploy/native/render_app_env.py" \
+    --profile rehearsal \
+    --source "$config_root/app.env" \
+    --output "$temp_dir/app.env" >/dev/null
+  install -o root -g vsp-admin -m 0640 "$temp_dir/app.env" "$config_root/app.env"
 fi
 
 if [[ $restore_mode == fresh ]]; then
@@ -351,6 +361,12 @@ else
     sleep 1
   done
   env -u REDISCLI_AUTH redis-cli -h 127.0.0.1 -p "$redis_port" ping | grep -qx PONG
+fi
+
+install -d -o heyx -g vsp-admin -m 0750 "$data_root/app/data"
+if [[ ! -s $data_root/app/data/model_pricing.json ]]; then
+  install -o heyx -g vsp-admin -m 0644 \
+    "$pricing_fallback" "$data_root/app/data/model_pricing.json"
 fi
 
 echo '[6/6] Starting the rehearsal target and waiting for health'

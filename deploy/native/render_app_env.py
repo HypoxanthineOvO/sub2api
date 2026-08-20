@@ -18,6 +18,8 @@ PROFILES = {
         "REDIS_PORT": "6379",
         "SELECTED_NODE_ENDPOINT": "http://127.0.0.1:19090/v1/selected-nodes",
         "DATA_DIR": "/var/lib/vsp-sub2api/production/app",
+        "PRICING_DATA_DIR": "/var/lib/vsp-sub2api/production/app/data",
+        "PRICING_FALLBACK_FILE": "/opt/vsp-sub2api/current/resources/model-pricing/model_prices_and_context_window.json",
         "SUB2API_DISABLE_AUTONOMOUS_WORKERS": "0",
     },
     "rehearsal": {
@@ -29,6 +31,8 @@ PROFILES = {
         "REDIS_PORT": "56379",
         "SELECTED_NODE_ENDPOINT": "http://127.0.0.1:19190/v1/selected-nodes",
         "DATA_DIR": "/var/lib/vsp-sub2api/rehearsal/app",
+        "PRICING_DATA_DIR": "/var/lib/vsp-sub2api/rehearsal/app/data",
+        "PRICING_FALLBACK_FILE": "/opt/vsp-sub2api/current/resources/model-pricing/model_prices_and_context_window.json",
         "SUB2API_DISABLE_AUTONOMOUS_WORKERS": "1",
         "TOKEN_REFRESH_ENABLED": "false",
         "GATEWAY_CN_PROVIDERS_BALANCE_CHECK_ENABLED": "false",
