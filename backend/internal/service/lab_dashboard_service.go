@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -150,7 +151,10 @@ func (s *LabDashboardService) Get(ctx context.Context) (*LabDashboardResponse, e
 	if s.cfg != nil && s.cfg.LabDashboard.SchedulerGroupID > 0 {
 		gid := s.cfg.LabDashboard.SchedulerGroupID
 		pool, poolErr := s.admin.ListOpenAISchedulableAccountsForSchedulerScore(ctx, &gid)
-		if poolErr == nil && len(pool) > 0 {
+		if poolErr != nil {
+			return nil, fmt.Errorf("load lab dashboard scheduler pool: %w", poolErr)
+		}
+		if len(pool) > 0 {
 			openAI := make([]*Account, 0, len(pool))
 			loads := make([]AccountWithConcurrency, 0, len(pool))
 			for i := range pool {
@@ -160,7 +164,10 @@ func (s *LabDashboardService) Get(ctx context.Context) (*LabDashboardResponse, e
 			}
 			loadMap := map[int64]*AccountLoadInfo{}
 			if s.concurrency != nil {
-				loadMap, _ = s.concurrency.GetAccountsLoadBatch(ctx, loads)
+				loadMap, err = s.concurrency.GetAccountsLoadBatch(ctx, loads)
+				if err != nil {
+					return nil, fmt.Errorf("load lab dashboard account concurrency: %w", err)
+				}
 			}
 			var snapshots map[int64]OpenAIAccountSchedulerScoreSnapshot
 			if s.rateLimit != nil {
@@ -192,6 +199,8 @@ func (s *LabDashboardService) Get(ctx context.Context) (*LabDashboardResponse, e
 			item.SelectionProbability = &value
 			item.SelectionProbabilityStatus = "computed"
 		} else if _, ok := probabilityPool[account.ID]; ok {
+			item.SelectionProbabilityStatus = "outside_first_choice_pool"
+		} else if s.cfg != nil && s.cfg.LabDashboard.SchedulerGroupID > 0 && account.IsOpenAIOAuth() {
 			item.SelectionProbabilityStatus = "outside_first_choice_pool"
 		}
 		if itemValue := today[account.ID]; itemValue != nil {

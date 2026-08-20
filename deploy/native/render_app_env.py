@@ -21,6 +21,7 @@ PROFILES = {
         "PRICING_DATA_DIR": "/var/lib/vsp-sub2api/production/app/data",
         "PRICING_FALLBACK_FILE": "/opt/vsp-sub2api/current/resources/model-pricing/model_prices_and_context_window.json",
         "SUB2API_DISABLE_AUTONOMOUS_WORKERS": "0",
+        "LAB_DASHBOARD_SCHEDULER_GROUP_ID": "30",
     },
     "rehearsal": {
         "SERVER_HOST": "127.0.0.1",
@@ -37,6 +38,7 @@ PROFILES = {
         "TOKEN_REFRESH_ENABLED": "false",
         "GATEWAY_CN_PROVIDERS_BALANCE_CHECK_ENABLED": "false",
         "CHANNEL_MONITOR_V2_DISABLE_AGGREGATOR": "1",
+        "LAB_DASHBOARD_SCHEDULER_GROUP_ID": "30",
     },
 }
 

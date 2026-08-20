@@ -920,9 +920,6 @@ export interface Proxy {
   quality_grade?: string
   quality_summary?: string
   quality_checked?: number
-  selected_node_name?: string
-  selected_node_observed_at?: string
-  selected_node_status?: 'fresh' | 'stale' | 'unavailable' | 'not_configured'
   expires_at: string | null
   fallback_mode: 'none' | 'proxy' | 'direct'
   backup_proxy_id?: number | null

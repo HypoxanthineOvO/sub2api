@@ -40,6 +40,7 @@ for profile in production rehearsal; do
   grep -Fx "PRICING_DATA_DIR=/var/lib/vsp-sub2api/$profile/app/data" "$temp_dir/$profile.env" >/dev/null
   grep -Fx 'PRICING_FALLBACK_FILE=/opt/vsp-sub2api/current/resources/model-pricing/model_prices_and_context_window.json' \
     "$temp_dir/$profile.env" >/dev/null
+  grep -Fx 'LAB_DASHBOARD_SCHEDULER_GROUP_ID=30' "$temp_dir/$profile.env" >/dev/null
 done
 
 grep -Fx 'SELECTED_NODE_ENDPOINT=http://127.0.0.1:19290/v1/selected-nodes' \

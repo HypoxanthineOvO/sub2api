@@ -1,0 +1,550 @@
+/**
+ * 玻璃拟态设计基线 tokens（C7-M2）
+ *
+ * 设计真源：.pipeline/reviews/002-design-mock/dashboard-mock.html
+ * 主题 A：深空玻璃（夜间，主主题）；主题 B：晨雾玻璃（白天模式）。
+ * 每个主题输出 10 个 --glass-* 自定义属性，锚点取值与 mock CSS 保持一致。
+ *
+ * 主题切换：应用内不设置 data-theme 属性，沿用现有暗色机制
+ * （main.ts initThemeClass / AppSidebar 主题开关切换 <html> 的 .dark 类）。
+ * 映射规则：html.dark → 主题 A（夜间）；html:not(.dark) → 主题 B（白天）。
+ * 显式 data-theme 属性选择器保留给演示、测试与后续推广。
+ */
+
+/* ============ 主题 A：深空玻璃（夜间，主主题） ============ */
+[data-theme="a"] {
+  --glass-page-bg:
+    radial-gradient(900px 500px at 85% -10%, rgba(99, 102, 241, .28), transparent 60%),
+    radial-gradient(700px 500px at -10% 100%, rgba(34, 211, 238, .16), transparent 55%),
+    linear-gradient(160deg, #0a0f22 0%, #0e1631 55%, #0a0f26 100%);
+  --glass-card-bg: rgba(255, 255, 255, .06);
+  --glass-card-border: rgba(255, 255, 255, .12);
+  --glass-blur: 18px;
+  --glass-radius: 18px;
+  --glass-shadow: 0 10px 34px rgba(2, 6, 23, .45);
+  --glass-accent: linear-gradient(90deg, #22d3ee, #8b5cf6);
+  --glass-text: #e8ecf8;
+  --glass-muted: #94a0c4;
+  --glass-faint: #6b76a0;
+}
+
+/* ============ 主题 B：晨雾玻璃（白天模式） ============ */
+[data-theme="b"] {
+  --glass-page-bg:
+    radial-gradient(900px 520px at 90% -10%, rgba(165, 180, 252, .5), transparent 60%),
+    radial-gradient(760px 520px at -10% 100%, rgba(186, 230, 253, .55), transparent 55%),
+    linear-gradient(160deg, #eef2ff 0%, #faf5ff 55%, #fff7ed 100%);
+  --glass-card-bg: rgba(255, 255, 255, .62);
+  --glass-card-border: rgba(255, 255, 255, .85);
+  --glass-blur: 20px;
+  --glass-radius: 20px;
+  --glass-shadow: 0 14px 44px rgba(99, 102, 241, .12);
+  --glass-accent: linear-gradient(90deg, #6366f1, #0ea5e9);
+  --glass-text: #1e2433;
+  --glass-muted: #6b7390;
+  --glass-faint: #9aa1bb;
+}
+
+/*
+ * 与现有暗色机制的映射：html.dark → 主题 A；默认（亮色）→ 主题 B。
+ * 取值与上方对应 [data-theme] 块保持一致（应用运行时不设置 data-theme 属性）。
+ */
+html.dark {
+  --glass-page-bg:
+    radial-gradient(900px 500px at 85% -10%, rgba(99, 102, 241, .28), transparent 60%),
+    radial-gradient(700px 500px at -10% 100%, rgba(34, 211, 238, .16), transparent 55%),
+    linear-gradient(160deg, #0a0f22 0%, #0e1631 55%, #0a0f26 100%);
+  --glass-card-bg: rgba(255, 255, 255, .06);
+  --glass-card-border: rgba(255, 255, 255, .12);
+  --glass-blur: 18px;
+  --glass-radius: 18px;
+  --glass-shadow: 0 10px 34px rgba(2, 6, 23, .45);
+  --glass-accent: linear-gradient(90deg, #22d3ee, #8b5cf6);
+  --glass-text: #e8ecf8;
+  --glass-muted: #94a0c4;
+  --glass-faint: #6b76a0;
+}
+
+html:not(.dark) {
+  --glass-page-bg:
+    radial-gradient(900px 520px at 90% -10%, rgba(165, 180, 252, .5), transparent 60%),
+    radial-gradient(760px 520px at -10% 100%, rgba(186, 230, 253, .55), transparent 55%),
+    linear-gradient(160deg, #eef2ff 0%, #faf5ff 55%, #fff7ed 100%);
+  --glass-card-bg: rgba(255, 255, 255, .62);
+  --glass-card-border: rgba(255, 255, 255, .85);
+  --glass-blur: 20px;
+  --glass-radius: 20px;
+  --glass-shadow: 0 14px 44px rgba(99, 102, 241, .12);
+  --glass-accent: linear-gradient(90deg, #6366f1, #0ea5e9);
+  --glass-text: #1e2433;
+  --glass-muted: #6b7390;
+  --glass-faint: #9aa1bb;
+}
+
+/* ============ 页面背景与文本层级（全部取自 tokens 变量） ============ */
+.glass-page-bg {
+  background: var(--glass-page-bg);
+  background-attachment: fixed;
+}
+
+.glass-text {
+  color: var(--glass-text);
+}
+
+.glass-muted {
+  color: var(--glass-muted);
+}
+
+.glass-faint {
+  color: var(--glass-faint);
+}
+
+.glass-accent-text {
+  background: var(--glass-accent);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.glass-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/*
+ * 玻璃卡片表面（GlassCard 根元素类：glass glass-card）。
+ * 背景/边框/模糊/圆角/阴影全部来自 tokens 变量，组件内不写死色值。
+ * 注：style.css 的遗留 .glass（AppHeader 在用）与未使用的 .glass-card @apply 类
+ * 会被全站加载；这里以重复类提升优先级（压过 .dark .glass 等暗色变体），
+ * 保证 tokens 版本始终生效，同时不改动 style.css、不影响其他页面。
+ */
+.glass.glass-card.glass-card {
+  background: var(--glass-card-bg);
+  border: 1px solid var(--glass-card-border);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-shadow);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 18px;
+}
+
+.glass.glass-card.glass-card--flush {
+  padding: 8px 10px;
+}
+
+/* ============ 区块标题与今日概览条 ============ */
+.glass-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 22px 0 10px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--glass-text);
+}
+
+/*
+ * 今日概览条：与 GlassCard 组合使用，选择器与 .glass.glass-card.glass-card 同优先级
+ * 且定义在后——保证桌面水平一行排布（row 不被卡片默认 column 覆盖）、项目间分隔线、
+ * 右侧「本周累计」chip 靠右（ml-auto）；flex-wrap 仅在宽度不足（小屏）时换行。
+ */
+.glass.glass-card.glass-today-strip {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 34px;
+  flex-wrap: wrap;
+  padding: 14px 20px;
+}
+
+.glass-today-item .glass-today-v {
+  font-size: 20px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+
+.glass-today-item .glass-today-k {
+  font-size: 11.5px;
+}
+
+.glass-today-sep {
+  width: 1px;
+  height: 30px;
+  background: currentColor;
+  opacity: 0.12;
+}
+
+/* ============ 卡片网格：严格等大，按数量自适应 ============ */
+.grid-cards {
+  display: grid;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.grid-cards > * {
+  min-width: 0;
+}
+
+.grid-cards.cols-1 {
+  grid-template-columns: minmax(0, 560px);
+}
+
+.grid-cards.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.grid-cards.cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.grid-cards.cols-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.glass-grid-quad {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+@media (max-width: 1100px) {
+  .grid-cards.cols-3,
+  .grid-cards.cols-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .glass-grid-quad {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .grid-cards.cols-1,
+  .grid-cards.cols-2,
+  .grid-cards.cols-3,
+  .grid-cards.cols-4,
+  .glass-grid-quad {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .glass.glass-card.glass-today-strip {
+    gap: 20px;
+  }
+
+  /* >8 卡状态表移动端精简列：类型/周窗口隐藏，卡/5 小时窗口/状态必留 */
+  .glass-col-hide-sm {
+    display: none;
+  }
+}
+
+/* ============ 卡片内部结构 ============ */
+.glass-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: nowrap;
+}
+
+.glass-card-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.glass-card-name > div {
+  min-width: 0;
+}
+
+.glass-card-title {
+  font-weight: 650;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.glass-card-sub {
+  font-size: 11.5px;
+}
+
+.glass-card-foot {
+  margin-top: auto;
+  padding-top: 12px;
+  font-size: 11.5px;
+}
+
+.glass-stat-value {
+  font-size: 24px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.glass-stat-label {
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.glass-provider-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+[data-theme="a"] .glass-provider-icon,
+html.dark .glass-provider-icon {
+  background: rgba(255, 255, 255, .10);
+  border: 1px solid rgba(255, 255, 255, .16);
+  color: #a5f3fc;
+}
+
+[data-theme="b"] .glass-provider-icon,
+html:not(.dark) .glass-provider-icon {
+  background: rgba(99, 102, 241, .10);
+  border: 1px solid rgba(99, 102, 241, .2);
+  color: #4f46e5;
+}
+
+/* ============ 状态徽标（调度中/已暂停/切卡）：头行右侧锁定不换行 ============ */
+.glass-chip {
+  font-size: 11px;
+  padding: 2.5px 9px;
+  border-radius: 999px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+[data-theme="a"] .glass-chip,
+html.dark .glass-chip {
+  background: rgba(255, 255, 255, .09);
+  border: 1px solid rgba(255, 255, 255, .14);
+  color: #cdd5ef;
+}
+
+[data-theme="b"] .glass-chip,
+html:not(.dark) .glass-chip {
+  background: rgba(255, 255, 255, .7);
+  border: 1px solid rgba(99, 102, 241, .18);
+  color: #4c5170;
+}
+
+[data-theme="a"] .glass-chip--ok,
+html.dark .glass-chip--ok {
+  background: rgba(52, 211, 153, .14);
+  border-color: rgba(52, 211, 153, .35);
+  color: #6ee7b7;
+}
+
+[data-theme="b"] .glass-chip--ok,
+html:not(.dark) .glass-chip--ok {
+  background: rgba(16, 185, 129, .12);
+  border-color: rgba(16, 185, 129, .3);
+  color: #047857;
+}
+
+[data-theme="a"] .glass-chip--stop,
+html.dark .glass-chip--stop {
+  background: rgba(251, 191, 36, .13);
+  border-color: rgba(251, 191, 36, .35);
+  color: #fcd34d;
+}
+
+[data-theme="b"] .glass-chip--stop,
+html:not(.dark) .glass-chip--stop {
+  background: rgba(245, 158, 11, .14);
+  border-color: rgba(245, 158, 11, .35);
+  color: #b45309;
+}
+
+[data-theme="a"] .glass-chip--swap,
+html.dark .glass-chip--swap {
+  background: rgba(139, 92, 246, .16);
+  border-color: rgba(139, 92, 246, .4);
+  color: #c4b5fd;
+}
+
+[data-theme="b"] .glass-chip--swap,
+html:not(.dark) .glass-chip--swap {
+  background: rgba(99, 102, 241, .12);
+  border-color: rgba(99, 102, 241, .35);
+  color: #4f46e5;
+}
+
+/* ============ 水位条 / 进度条 ============ */
+.glass-waterline {
+  margin-top: 10px;
+}
+
+.glass-waterline-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+
+.glass-bar-track {
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+[data-theme="a"] .glass-bar-track,
+html.dark .glass-bar-track {
+  background: rgba(255, 255, 255, .10);
+}
+
+[data-theme="b"] .glass-bar-track,
+html:not(.dark) .glass-bar-track {
+  background: rgba(99, 102, 241, .12);
+}
+
+.glass-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--glass-accent);
+}
+
+[data-theme="a"] .glass-bar-fill,
+html.dark .glass-bar-fill {
+  box-shadow: 0 0 12px rgba(34, 211, 238, .45);
+}
+
+[data-theme="a"] .glass-bar-fill--warn,
+html.dark .glass-bar-fill--warn {
+  background: linear-gradient(90deg, #fbbf24, #f97316);
+  box-shadow: 0 0 12px rgba(251, 191, 36, .4);
+}
+
+[data-theme="b"] .glass-bar-fill--warn,
+html:not(.dark) .glass-bar-fill--warn {
+  background: linear-gradient(90deg, #f59e0b, #f97316);
+}
+
+[data-theme="a"] .glass-bar-fill--mute,
+html.dark .glass-bar-fill--mute {
+  background: rgba(255, 255, 255, .28);
+  box-shadow: none;
+}
+
+[data-theme="b"] .glass-bar-fill--mute,
+html:not(.dark) .glass-bar-fill--mute {
+  background: rgba(30, 36, 51, .2);
+}
+
+.glass-bar-mini {
+  width: 90px;
+  height: 6px;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* ============ 调度概率行 ============ */
+.glass-prob-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+  font-size: 13px;
+}
+
+.glass-prob-row + .glass-prob-row {
+  border-top: 1px solid rgba(128, 128, 128, .12);
+}
+
+.glass-prob-name {
+  width: 210px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.glass-prob-track {
+  flex: 1;
+}
+
+/* ============ 玻璃表格 ============ */
+.glass-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.glass-table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 11.5px;
+  padding: 8px 10px;
+  color: var(--glass-faint);
+}
+
+.glass-table td {
+  padding: 8px 10px;
+}
+
+.glass-table-row {
+  border-top: 1px solid;
+}
+
+[data-theme="a"] .glass-table-row,
+html.dark .glass-table-row {
+  border-color: rgba(255, 255, 255, .07);
+}
+
+[data-theme="b"] .glass-table-row,
+html:not(.dark) .glass-table-row {
+  border-color: rgba(30, 36, 51, .06);
+}
+
+.glass-rank-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+[data-theme="a"] .glass-rank-badge--first,
+html.dark .glass-rank-badge--first {
+  color: #fcd34d;
+}
+
+[data-theme="b"] .glass-rank-badge--first,
+html:not(.dark) .glass-rank-badge--first {
+  color: #d97706;
+}
+
+/* C7 视觉修正：渠道卡内分账户消耗列表 */
+.glass-channel-accounts {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--glass-card-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* 单渠道卡：左侧总额、右侧分账户明细的横向布局 */
+.glass-channel-accounts--split {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+  border-left: 1px solid var(--glass-card-border);
+  padding-left: 1.5rem;
+  flex: 1;
+}

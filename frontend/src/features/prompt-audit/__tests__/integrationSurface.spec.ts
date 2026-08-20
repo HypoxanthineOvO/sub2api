@@ -18,13 +18,12 @@ describe('Prompt Audit integration surface', () => {
     expect(route).toContain('requiresRiskControl: true')
   })
 
-  it('keeps the security routes available while hiding them from the focused sidebar', () => {
-    const router = read('../../../router/index.ts')
+  it('keeps the legacy content moderation route and adds both pages under an expand-only security group', () => {
     const sidebar = read('../../../components/layout/AppSidebar.vue')
-    expect(router).toContain("path: '/admin/risk-control'")
-    expect(router).toContain("path: '/admin/prompt-audit'")
-    expect(sidebar).not.toContain("path: '/admin/risk-control'")
-    expect(sidebar).not.toContain("path: '/admin/prompt-audit'")
+    const group = sidebar.slice(sidebar.indexOf("path: '/admin/security-audit'"), sidebar.indexOf("path: '/admin/redeem'"))
+    expect(group).toContain('expandOnly: true')
+    expect(group).toContain("path: '/admin/risk-control'")
+    expect(group).toContain("path: '/admin/prompt-audit'")
   })
 
   it('keeps Prompt Audit locale trees symmetric and all operational controls named', () => {
