@@ -472,6 +472,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon },
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon },
+    { path: '/admin/channels/pricing', label: t('nav.modelManagement'), icon: ChartIcon },
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
