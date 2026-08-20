@@ -39,7 +39,7 @@ describe('LabDashboardView', () => {
     expect(getLabDashboard).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('仪表盘')
     expect(wrapper.text()).toContain('账户状态')
-    expect(wrapper.text()).toContain('主分组新会话基础选择概率')
+    expect(wrapper.text()).toContain('该分组新会话基础选择概率')
     expect(wrapper.text()).toContain('75%')
     expect(wrapper.text()).toContain('0%')
     expect(wrapper.text()).toContain('卡片消耗')

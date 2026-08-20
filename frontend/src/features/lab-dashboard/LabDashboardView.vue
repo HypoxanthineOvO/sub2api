@@ -112,7 +112,7 @@
                             class="glass-muted"
                             data-test="schedule-probability-label"
                             title="无粘性新会话首选概率估算；不包含请求级模型和 transport 过滤"
-                          >主分组新会话基础选择概率</span>
+                          >该分组新会话基础选择概率</span>
                           <span class="glass-num">{{ percentText(probPercentMap[card.id] ?? null) }}</span>
                         </div>
                         <GlassBar :value="probPercentMap[card.id] ?? 0" :variant="card.paused ? 'mute' : 'default'" />

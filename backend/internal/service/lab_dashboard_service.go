@@ -173,6 +173,11 @@ func (s *LabDashboardService) Get(ctx context.Context) (*LabDashboardResponse, e
 			openAI := make([]*Account, 0, len(pool))
 			loads := make([]AccountWithConcurrency, 0, len(pool))
 			for i := range pool {
+				// Keep the dashboard projection aligned with the production scheduler's
+				// initial filter: quota-auto-paused OAuth accounts must not occupy TopK.
+				if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, &pool[i]); paused {
+					continue
+				}
 				openAI = append(openAI, &pool[i])
 				probabilityPool[pool[i].ID] = struct{}{}
 				loads = append(loads, AccountWithConcurrency{ID: pool[i].ID, MaxConcurrency: pool[i].EffectiveLoadFactor()})

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -78,4 +79,38 @@ func TestLabDashboardAccountBillingProjectsPayGBalances(t *testing.T) {
 		{Currency: "USD", Balance: 1.75},
 	}, balances)
 	require.True(t, low)
+}
+
+func TestLabDashboardSchedulerProjectionExcludesQuotaPausedOAuthAccounts(t *testing.T) {
+	ctx := context.Background()
+	paused := &Account{
+		ID:          40,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra: map[string]any{
+			"codex_7d_used_percent":   100.0,
+			"codex_7d_reset_at":       time.Now().UTC().Add(time.Hour).Format(time.RFC3339),
+			"auto_pause_7d_threshold": 0.95,
+		},
+	}
+	healthy := &Account{
+		ID:          36,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra: map[string]any{
+			"codex_7d_used_percent":   9.0,
+			"codex_7d_reset_at":       time.Now().UTC().Add(time.Hour).Format(time.RFC3339),
+			"auto_pause_7d_threshold": 0.95,
+		},
+	}
+
+	pausedResult, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, paused)
+	healthyResult, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, healthy)
+
+	require.True(t, pausedResult)
+	require.False(t, healthyResult)
 }
