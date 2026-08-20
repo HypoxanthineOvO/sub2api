@@ -17,7 +17,7 @@ PROFILE_PORTS = {
     "production": {
         "mixed": range(17901, 17906),
         "controller": range(29091, 29096),
-        "selected_node": 19090,
+        "selected_node": 19290,
     },
     "rehearsal": {
         "mixed": range(18901, 18906),

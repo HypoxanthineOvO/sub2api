@@ -42,4 +42,15 @@ for profile in production rehearsal; do
     "$temp_dir/$profile.env" >/dev/null
 done
 
+grep -Fx 'SELECTED_NODE_ENDPOINT=http://127.0.0.1:19290/v1/selected-nodes' \
+  "$temp_dir/production.env" >/dev/null
+grep -Fx 'SELECTED_NODE_ENDPOINT=http://127.0.0.1:19190/v1/selected-nodes' \
+  "$temp_dir/rehearsal.env" >/dev/null
+PYTHONPATH="$repo_root/ops/mihomo" PYTHONPYCACHEPREFIX="$temp_dir/pycache" python3 - <<'PY'
+from render_profile import PROFILE_PORTS
+
+assert PROFILE_PORTS["production"]["selected_node"] == 19290
+assert PROFILE_PORTS["rehearsal"]["selected_node"] == 19190
+PY
+
 echo 'native shell, Python, and pricing path contract checks passed'

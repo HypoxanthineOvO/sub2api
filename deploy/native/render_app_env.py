@@ -16,7 +16,7 @@ PROFILES = {
         "DATABASE_PORT": "5432",
         "REDIS_HOST": "127.0.0.1",
         "REDIS_PORT": "6379",
-        "SELECTED_NODE_ENDPOINT": "http://127.0.0.1:19090/v1/selected-nodes",
+        "SELECTED_NODE_ENDPOINT": "http://127.0.0.1:19290/v1/selected-nodes",
         "DATA_DIR": "/var/lib/vsp-sub2api/production/app",
         "PRICING_DATA_DIR": "/var/lib/vsp-sub2api/production/app/data",
         "PRICING_FALLBACK_FILE": "/opt/vsp-sub2api/current/resources/model-pricing/model_prices_and_context_window.json",

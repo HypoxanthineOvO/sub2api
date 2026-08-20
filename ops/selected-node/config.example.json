@@ -1,6 +1,6 @@
 {
   "bind_host": "127.0.0.1",
-  "bind_port": 19090,
+  "bind_port": 19290,
   "api_token": "replace-with-aggregator-token",
   "timeout_ms": 800,
   "client_timeout_ms": 2000,
