@@ -74,13 +74,14 @@ def render_allocator(source: Path, output_root: Path, profile: str) -> None:
 
 def render_selected_node(source: Path, output_root: Path, profile: str) -> None:
     config = load_json(source)
-    if config.get("bind_host") != "127.0.0.1":
-        raise ValueError("Selected Node source config must bind to 127.0.0.1")
+    if config.get("bind_host") not in {"127.0.0.1", "172.17.0.1"}:
+        raise ValueError("Selected Node source config must use loopback or the legacy Docker bridge")
     slots = config.get("slots")
     expected_names = tuple(f"Slot {letter}" for letter in "ABCDE")
     if not isinstance(slots, dict) or set(slots) != set(expected_names):
         raise ValueError("Selected Node config must contain exactly Slot A through Slot E")
     ports = PROFILE_PORTS[profile]
+    config["bind_host"] = "127.0.0.1"
     config["bind_port"] = ports["selected_node"]
     for slot_name, controller_port in zip(expected_names, ports["controller"], strict=True):
         slot = slots[slot_name]
