@@ -97,7 +97,21 @@ describe('HomeView compact mode', () => {
     const wrapper = mountHome(settings)
 
     expect(wrapper.find('[data-testid="compact-home"]').exists()).toBe(false)
-    expect(wrapper.find('.terminal-container').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="default-home"]').text()).toContain('VSP Lab AI Gateway')
+    expect(wrapper.get('[data-testid="default-home"]').text()).toContain(
+      'VSPLab 专用 AI 模型网关，管理 VSPLab 的 AI 算力。'
+    )
+    expect(wrapper.get('[data-testid="home-hero-logo"]').attributes('src')).toBe('/logo.png')
+  })
+
+  it('routes the default home CTA according to authentication and role', () => {
+    let wrapper = mountHome()
+    expect(wrapper.get('[data-testid="home-primary-cta"]').findComponent(RouterLinkStub).props('to')).toBe('/login')
+
+    authStore.isAuthenticated = true
+    authStore.isAdmin = true
+    wrapper = mountHome()
+    expect(wrapper.get('[data-testid="home-primary-cta"]').findComponent(RouterLinkStub).props('to')).toBe('/admin/dashboard')
   })
 
   it('links unauthenticated visitors to login', () => {
