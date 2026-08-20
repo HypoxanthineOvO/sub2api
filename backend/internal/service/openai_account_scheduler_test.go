@@ -3275,6 +3275,172 @@ func TestBuildOpenAIWeightedSelectionOrder_DeterministicBySessionSeed(t *testing
 	}
 }
 
+func TestOpenAIQuotaTaperFactor(t *testing.T) {
+	tests := []struct {
+		name        string
+		usedPercent float64
+		want        float64
+	}{
+		{name: "below lower bound", usedPercent: 65, want: 1},
+		{name: "at lower bound", usedPercent: 80, want: 1},
+		{name: "mid taper", usedPercent: 89, want: 0.525},
+		{name: "at upper bound", usedPercent: 98, want: 0.05},
+		{name: "above upper bound", usedPercent: 100, want: 0.05},
+		{name: "nan fails neutral", usedPercent: math.NaN(), want: 1},
+		{name: "infinity fails neutral", usedPercent: math.Inf(1), want: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.InDelta(t, tt.want, openAIQuotaTaperFactor(tt.usedPercent), 1e-9)
+		})
+	}
+}
+
+func TestOpenAIAccountQuotaTaperFactor_UsesFreshOAuthWindowsOnly(t *testing.T) {
+	now := time.Date(2026, time.August, 20, 6, 30, 0, 0, time.UTC)
+	fresh := now.Add(-time.Hour).Format(time.RFC3339)
+	futureReset := now.Add(time.Hour).Format(time.RFC3339)
+	pastReset := now.Add(-time.Minute).Format(time.RFC3339)
+
+	tests := []struct {
+		name    string
+		account *Account
+		want    float64
+	}{
+		{
+			name: "uses the more depleted valid window",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+				"codex_usage_updated_at":       fresh,
+				"codex_primary_used_percent":   70,
+				"codex_primary_reset_at":       futureReset,
+				"codex_secondary_used_percent": 89,
+				"codex_secondary_reset_at":     futureReset,
+			}},
+			want: 0.525,
+		},
+		{
+			name: "ignores a reset window and uses the other valid window",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+				"codex_usage_updated_at":       fresh,
+				"codex_primary_used_percent":   99,
+				"codex_primary_reset_at":       pastReset,
+				"codex_secondary_used_percent": 80,
+				"codex_secondary_reset_at":     futureReset,
+			}},
+			want: 1,
+		},
+		{
+			name: "stale snapshot is neutral",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+				"codex_usage_updated_at":     now.Add(-openAIQuotaHeadroomSnapshotStaleAfter).Format(time.RFC3339),
+				"codex_primary_used_percent": 99,
+				"codex_primary_reset_at":     futureReset,
+			}},
+			want: 1,
+		},
+		{
+			name: "window without reset metadata is neutral",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+				"codex_usage_updated_at":     fresh,
+				"codex_primary_used_percent": 99,
+			}},
+			want: 1,
+		},
+		{
+			name: "legacy seven day aliases remain supported",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+				"codex_usage_updated_at": fresh,
+				"codex_7d_used_percent":  98,
+				"codex_7d_reset_at":      futureReset,
+			}},
+			want: 0.05,
+		},
+		{
+			name: "api key account is neutral",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{
+				"codex_usage_updated_at":     fresh,
+				"codex_primary_used_percent": 99,
+				"codex_primary_reset_at":     futureReset,
+			}},
+			want: 1,
+		},
+		{
+			name: "identity mismatch is neutral",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+				Credentials: map[string]any{"email": "owner@example.com"},
+				Extra: map[string]any{
+					"email":                      "other@example.com",
+					"codex_usage_updated_at":     fresh,
+					"codex_primary_used_percent": 99,
+					"codex_primary_reset_at":     futureReset,
+				}},
+			want: 1,
+		},
+		{
+			name: "malformed snapshot is neutral",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+				"codex_usage_updated_at":     "not-a-time",
+				"codex_primary_used_percent": "not-a-number",
+			}},
+			want: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.InDelta(t, tt.want, openAIAccountQuotaTaperFactor(tt.account, now), 1e-9)
+		})
+	}
+}
+
+func TestBuildOpenAIWeightedSelectionWeights_AppliesQuotaTaperAfterScoreShift(t *testing.T) {
+	now := time.Date(2026, time.August, 20, 6, 30, 0, 0, time.UTC)
+	fresh := now.Add(-time.Hour).Format(time.RFC3339)
+	futureReset := now.Add(time.Hour).Format(time.RFC3339)
+	candidates := []openAIAccountCandidateScore{
+		{account: &Account{ID: 201, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+			"codex_usage_updated_at":     fresh,
+			"codex_primary_used_percent": 98,
+			"codex_primary_reset_at":     futureReset,
+		}}, score: 4},
+		{account: &Account{ID: 202, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+			"codex_usage_updated_at":     fresh,
+			"codex_primary_used_percent": 50,
+			"codex_primary_reset_at":     futureReset,
+		}}, score: 2},
+	}
+
+	weights := buildOpenAIWeightedSelectionWeights(candidates, now, true)
+	require.InDelta(t, 0.15, weights[0], 1e-9)
+	require.InDelta(t, 1.0, weights[1], 1e-9)
+	require.InDelta(t, 3.0, buildOpenAIWeightedSelectionWeights(candidates, now, false)[0], 1e-9)
+}
+
+func TestBuildOpenAISelectionOrder_StickyChoiceBypassesQuotaTaper(t *testing.T) {
+	now := time.Date(2026, time.August, 20, 6, 30, 0, 0, time.UTC)
+	depleted := &Account{ID: 301, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+		"codex_usage_updated_at":     now.Add(-time.Hour).Format(time.RFC3339),
+		"codex_primary_used_percent": 98,
+		"codex_primary_reset_at":     now.Add(time.Hour).Format(time.RFC3339),
+	}}
+	require.InDelta(t, 0.05, openAIAccountQuotaTaperFactor(depleted, now), 1e-9)
+
+	scheduler := &defaultOpenAIAccountScheduler{}
+	plan := openAIAccountLoadPlan{
+		topK: 2,
+		candidates: []openAIAccountCandidateScore{
+			{account: depleted, score: 1},
+			{account: &Account{ID: 302}, score: 10},
+		},
+	}
+	req := OpenAIAccountScheduleRequest{StickyWeighted: true, StickyAccountID: 301}
+
+	order := scheduler.buildOpenAISelectionOrder(req, plan)
+	require.Len(t, order, 2)
+	require.Equal(t, int64(301), order[0].account.ID)
+}
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceDistributesAcrossSessions(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(15)

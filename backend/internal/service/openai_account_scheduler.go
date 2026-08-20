@@ -38,6 +38,9 @@ const (
 	openAIQuotaHeadroomNeutralFactor           = 0.5
 	openAIQuotaHeadroomSecondaryLowRemain      = 0.10
 	openAIQuotaHeadroomSnapshotStaleAfter      = 8 * time.Hour
+	openAIQuotaTaperLowerUsedPercent           = 80.0
+	openAIQuotaTaperUpperUsedPercent           = 98.0
+	openAIQuotaTaperMinimumFactor              = 0.05
 	openAIUpstreamCostNeutralFactor            = 0.5
 	defaultOpenAIOAuthSchedulingRateMultiplier = 1.0
 )
@@ -763,21 +766,7 @@ func buildOpenAIWeightedSelectionOrder(
 	}
 
 	pool := append([]openAIAccountCandidateScore(nil), candidates...)
-	weights := make([]float64, len(pool))
-	minScore := pool[0].score
-	for i := 1; i < len(pool); i++ {
-		if pool[i].score < minScore {
-			minScore = pool[i].score
-		}
-	}
-	for i := range pool {
-		// 将 top-K 分值平移到正区间，避免“单一最高分账号”长期垄断。
-		weight := (pool[i].score - minScore) + 1.0
-		if math.IsNaN(weight) || math.IsInf(weight, 0) || weight <= 0 {
-			weight = 1.0
-		}
-		weights[i] = weight
-	}
+	weights := buildOpenAIWeightedSelectionWeights(pool, time.Now(), !req.StickyWeighted)
 
 	order := make([]openAIAccountCandidateScore, 0, len(pool))
 	rng := newOpenAISelectionRNG(deriveOpenAISelectionSeed(req))
@@ -807,6 +796,32 @@ func buildOpenAIWeightedSelectionOrder(
 		weights = append(weights[:selectedIdx], weights[selectedIdx+1:]...)
 	}
 	return order
+}
+
+func buildOpenAIWeightedSelectionWeights(candidates []openAIAccountCandidateScore, now time.Time, applyQuotaTaper bool) []float64 {
+	if len(candidates) == 0 {
+		return nil
+	}
+	weights := make([]float64, len(candidates))
+	minScore := candidates[0].score
+	for i := 1; i < len(candidates); i++ {
+		if candidates[i].score < minScore {
+			minScore = candidates[i].score
+		}
+	}
+	for i := range candidates {
+		// 将 top-K 分值平移到正区间，再按新鲜 OAuth 配额快照平滑降权。
+		quotaTaper := 1.0
+		if applyQuotaTaper {
+			quotaTaper = openAIAccountQuotaTaperFactor(candidates[i].account, now)
+		}
+		weight := ((candidates[i].score - minScore) + 1.0) * quotaTaper
+		if math.IsNaN(weight) || math.IsInf(weight, 0) || weight <= 0 {
+			weight = 1.0
+		}
+		weights[i] = weight
+	}
+	return weights
 }
 
 func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
@@ -2815,6 +2830,68 @@ func openAIQuotaHeadroomFactor(account *Account, now time.Time) float64 {
 		}
 	}
 	return factor
+}
+
+func openAIQuotaTaperFactor(usedPercent float64) float64 {
+	if math.IsNaN(usedPercent) || math.IsInf(usedPercent, 0) || usedPercent <= openAIQuotaTaperLowerUsedPercent {
+		return 1
+	}
+	if usedPercent >= openAIQuotaTaperUpperUsedPercent {
+		return openAIQuotaTaperMinimumFactor
+	}
+	progress := (usedPercent - openAIQuotaTaperLowerUsedPercent) /
+		(openAIQuotaTaperUpperUsedPercent - openAIQuotaTaperLowerUsedPercent)
+	return 1 - progress*(1-openAIQuotaTaperMinimumFactor)
+}
+
+func openAIAccountQuotaTaperFactor(account *Account, now time.Time) float64 {
+	if account == nil || !account.IsOpenAIOAuth() || len(account.Extra) == 0 ||
+		!openAICodexSnapshotIdentityTrusted(account) || openAIQuotaHeadroomSnapshotStale(account.Extra, now) {
+		return 1
+	}
+	updatedAt, err := parseTime(fmt.Sprint(account.Extra["codex_usage_updated_at"]))
+	if err != nil || updatedAt.After(now) {
+		return 1
+	}
+
+	maxUsedPercent := 0.0
+	hasValidWindow := false
+	for _, window := range []struct {
+		names []string
+		keys  []string
+	}{
+		{names: []string{"primary", "7d"}, keys: []string{"codex_primary_used_percent", "codex_7d_used_percent"}},
+		{names: []string{"secondary", "5h"}, keys: []string{"codex_secondary_used_percent", "codex_5h_used_percent"}},
+	} {
+		usedPercent, ok := resolveAccountExtraNumber(account.Extra, window.keys...)
+		if !ok || math.IsNaN(usedPercent) || math.IsInf(usedPercent, 0) || usedPercent < 0 ||
+			!openAIQuotaWindowHasResetMetadata(account.Extra, window.names...) ||
+			openAIQuotaWindowResetAny(account.Extra, now, window.names...) {
+			continue
+		}
+		hasValidWindow = true
+		if usedPercent > maxUsedPercent {
+			maxUsedPercent = usedPercent
+		}
+	}
+	if !hasValidWindow {
+		return 1
+	}
+	return openAIQuotaTaperFactor(maxUsedPercent)
+}
+
+func openAIQuotaWindowHasResetMetadata(extra map[string]any, windows ...string) bool {
+	for _, window := range windows {
+		if resetAtRaw, ok := extra["codex_"+window+"_reset_at"]; ok {
+			if _, err := parseTime(fmt.Sprint(resetAtRaw)); err == nil {
+				return true
+			}
+		}
+		if parseExtraInt(extra["codex_"+window+"_reset_after_seconds"]) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func openAIQuotaHeadroomSnapshotStale(extra map[string]any, now time.Time) bool {
