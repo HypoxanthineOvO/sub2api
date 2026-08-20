@@ -1,0 +1,27 @@
+[Unit]
+Description=VSP Sub2API PostgreSQL (%i)
+After=network.target
+PartOf=vsp-sub2api-%i.target
+
+[Service]
+Type=notify
+User=postgres
+Group=postgres
+EnvironmentFile=/etc/vsp-sub2api/%i/postgresql.env
+RuntimeDirectory=vsp-sub2api-%i-postgresql
+RuntimeDirectoryMode=0750
+ExecStart=/usr/lib/postgresql/16/bin/postgres -D /var/lib/vsp-sub2api/%i/postgresql -c listen_addresses=127.0.0.1 -c port=${PGPORT} -c unix_socket_directories=/run/vsp-sub2api-%i-postgresql
+ExecReload=/bin/kill -HUP $MAINPID
+KillSignal=SIGINT
+TimeoutStartSec=120
+TimeoutStopSec=3600
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/vsp-sub2api/%i/postgresql /run/vsp-sub2api-%i-postgresql
+
+[Install]
+WantedBy=vsp-sub2api-%i.target

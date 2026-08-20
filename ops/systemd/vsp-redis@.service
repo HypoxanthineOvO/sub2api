@@ -1,0 +1,25 @@
+[Unit]
+Description=VSP Sub2API Redis (%i)
+After=network.target
+PartOf=vsp-sub2api-%i.target
+
+[Service]
+Type=notify
+User=redis
+Group=redis
+RuntimeDirectory=vsp-sub2api-%i-redis
+RuntimeDirectoryMode=0750
+ExecStart=/usr/bin/redis-server /etc/vsp-sub2api/%i/redis.conf --supervised systemd
+ExecStop=/bin/kill -s TERM $MAINPID
+TimeoutStopSec=120
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65535
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/vsp-sub2api/%i/redis /run/vsp-sub2api-%i-redis
+
+[Install]
+WantedBy=vsp-sub2api-%i.target
