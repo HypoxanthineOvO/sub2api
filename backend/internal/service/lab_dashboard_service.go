@@ -59,7 +59,7 @@ type LabDashboardLeaderboard struct {
 }
 type LabDashboardLeaderboardRow struct {
 	DisplayName     string     `json:"display_name"`
-	TodayActualCost float64    `json:"today_actual_cost"`
+	TodayActualCost *float64   `json:"today_actual_cost,omitempty"`
 	LastActiveAt    *time.Time `json:"last_active_at,omitempty"`
 	TotalActualCost float64    `json:"total_actual_cost"`
 }
@@ -123,7 +123,7 @@ func (s *LabDashboardService) Get(ctx context.Context) (*LabDashboardResponse, e
 	if err != nil {
 		return nil, err
 	}
-	accounts, _, err := s.admin.ListAccounts(ctx, 1, 100, "", "", "", "", 0, "", "name", "asc")
+	accounts, err := s.admin.ListAccountsForSchedulerScoreFilter(ctx, "", "", "", "", 0, "")
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +132,10 @@ func (s *LabDashboardService) Get(ctx context.Context) (*LabDashboardResponse, e
 	for i := range accounts {
 		ids = append(ids, accounts[i].ID)
 	}
-	today, _ := s.accounts.GetTodayStatsBatch(ctx, ids)
+	today, err := s.accounts.GetTodayStatsBatch(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	if s.selectedNodes != nil {
 		proxies := make([]*Proxy, 0, len(accounts))
 		for i := range accounts {
@@ -206,34 +209,56 @@ func (s *LabDashboardService) Get(ctx context.Context) (*LabDashboardResponse, e
 			result.Summary.SchedulableAccounts++
 		}
 	}
-	weekTrend, _ := s.dashboard.GetUsageTrendWithFilters(ctx, timezone.StartOfWeek(now), now, "day", 0, 0, 0, 0, "", nil, nil, nil)
+	weekTrend, err := s.dashboard.GetUsageTrendWithFilters(ctx, timezone.StartOfWeek(now), now, "day", 0, 0, 0, 0, "", nil, nil, nil)
+	if err != nil {
+		return nil, err
+	}
 	for _, point := range weekTrend {
 		result.Summary.WeekActualCost += point.ActualCost
 	}
 	start := now.Add(-24 * time.Hour)
-	trend, _ := s.dashboard.GetUserUsageTrend(ctx, start, now, "hour", 12)
+	trend, err := s.dashboard.GetUserUsageTrend(ctx, start, now, "hour", 12)
+	if err != nil {
+		return nil, err
+	}
 	for _, point := range trend {
 		result.UserUsage24h = append(result.UserUsage24h, LabDashboardUserUsage{Bucket: point.Date, DisplayName: labDashboardDisplayName("", point.Username, point.Email, point.UserID), Requests: point.Requests, ActualCost: point.ActualCost})
 	}
-	todayRanking, _ := s.dashboard.GetUserSpendingRanking(ctx, timezone.Today(), now, 10)
-	historyRanking, _ := s.dashboard.GetUserSpendingRanking(ctx, time.Unix(0, 0), now, 100)
-	historyByUser := map[int64]float64{}
-	if historyRanking != nil {
-		for _, row := range historyRanking.Ranking {
-			historyByUser[row.UserID] = row.ActualCost
+	todayRanking, err := s.dashboard.GetUserSpendingRanking(ctx, timezone.Today(), now, 100)
+	if err != nil {
+		return nil, err
+	}
+	historyRanking, err := s.dashboard.GetUserSpendingRanking(ctx, time.Unix(0, 0), now, 10)
+	if err != nil {
+		return nil, err
+	}
+	todayByUser := map[int64]float64{}
+	if todayRanking != nil {
+		for _, row := range todayRanking.Ranking {
+			todayByUser[row.UserID] = row.ActualCost
 		}
 	}
 	result.Leaderboard.HistoryStartDate = "retained"
 	result.Leaderboard.HistoryEndDate = now.Format("2006-01-02")
-	if todayRanking != nil {
-		result.Leaderboard.Rows = make([]LabDashboardLeaderboardRow, 0, len(todayRanking.Ranking))
-		for _, row := range todayRanking.Ranking {
-			result.Leaderboard.Rows = append(result.Leaderboard.Rows, LabDashboardLeaderboardRow{DisplayName: labDashboardDisplayName("", row.Username, row.Email, row.UserID), TodayActualCost: row.ActualCost, TotalActualCost: historyByUser[row.UserID]})
+	if historyRanking != nil {
+		result.Leaderboard.Rows = make([]LabDashboardLeaderboardRow, 0, len(historyRanking.Ranking))
+		for _, row := range historyRanking.Ranking {
+			item := LabDashboardLeaderboardRow{DisplayName: labDashboardDisplayName("", row.Username, row.Email, row.UserID), TotalActualCost: row.ActualCost}
+			if value, ok := todayByUser[row.UserID]; ok {
+				item.TodayActualCost = &value
+			}
+			result.Leaderboard.Rows = append(result.Leaderboard.Rows, item)
 		}
 	}
 	params := pagination.PaginationParams{Page: 1, PageSize: 8, SortBy: "created_at", SortOrder: "desc"}
-	logs, _, _ := s.usage.ListWithFilters(ctx, params, usagestats.UsageLogFilters{})
-	chains, _ := s.usage.ListRequestChains(ctx, logs)
+	logs, _, err := s.usage.ListWithFilters(ctx, params, usagestats.UsageLogFilters{})
+	if err != nil {
+		return nil, err
+	}
+	chains, err := s.usage.ListRequestChains(ctx, logs)
+	if err != nil {
+		return nil, err
+	}
 	switches := labDashboardSwitches(chains)
 	for _, log := range logs {
 		name := ""

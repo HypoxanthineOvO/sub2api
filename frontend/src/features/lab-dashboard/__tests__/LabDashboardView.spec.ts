@@ -11,7 +11,10 @@ describe('LabDashboardView', () => {
     getLabDashboard.mockResolvedValue({
       generated_at: '2026-08-20T00:00:00Z', timezone: 'Asia/Shanghai',
       summary: { today_actual_cost: 1, today_requests: 2, active_users: 1, schedulable_accounts: 1, total_accounts: 1, week_actual_cost: 3 },
-      accounts: [{ name: 'Card A', platform: 'openai', type: 'oauth', status: 'active', schedulable: true, quota_factor: .5, selection_probability: .75, selection_probability_status: 'computed', today_requests: 2, today_actual_cost: 1 }],
+      accounts: [
+        { name: 'Card A', platform: 'openai', type: 'oauth', status: 'active', schedulable: true, quota_factor: .5, selection_probability: .75, selection_probability_status: 'computed', today_requests: 2, today_actual_cost: 1 },
+        { name: 'Card B', platform: 'openai', type: 'oauth', status: 'disabled', schedulable: false, quota_factor: 1, selection_probability_status: 'unavailable', today_requests: 0, today_actual_cost: 0 }
+      ],
       leaderboard: { rows: [{ display_name: 'Alice', today_actual_cost: 1, total_actual_cost: 3 }] },
       user_usage_24h: [{ bucket: '10:00', display_name: 'Alice', requests: 2, actual_cost: 1 }],
       recent_usage: [{ created_at: '2026-08-20T00:00:00Z', user_display_name: 'Alice', model: 'gpt', account_name: 'Card A', actual_cost: 1 }]
@@ -27,6 +30,9 @@ describe('LabDashboardView', () => {
     expect(wrapper.text()).toContain('历史金额榜')
     expect(wrapper.text()).toContain('最近 24 小时用户消费')
     expect(wrapper.text()).toContain('最近使用记录')
+    expect(wrapper.text()).toContain('已禁用')
+    expect(wrapper.text()).not.toContain('已暂停')
+    expect(wrapper.find('main').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('编辑')
     expect(wrapper.text()).not.toContain('删除')
   })

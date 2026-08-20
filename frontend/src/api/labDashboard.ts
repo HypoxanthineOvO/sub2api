@@ -37,7 +37,7 @@ export interface LabDashboardResponse {
     history_end_date?: string
     rows: Array<{
       display_name: string
-      today_actual_cost: number
+      today_actual_cost?: number
       last_active_at?: string
       total_actual_cost: number
     }>
