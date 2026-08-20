@@ -53,4 +53,4 @@ assert PROFILE_PORTS["production"]["selected_node"] == 19290
 assert PROFILE_PORTS["rehearsal"]["selected_node"] == 19190
 PY
 
-echo 'native shell, Python, and pricing path contract checks passed'
+echo 'native shell, Python, pricing, and Selected Node contract checks passed'
