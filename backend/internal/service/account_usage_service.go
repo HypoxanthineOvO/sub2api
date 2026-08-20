@@ -1398,6 +1398,16 @@ func (s *AccountUsageService) GetTodayStats(ctx context.Context, accountID int64
 
 // GetTodayStatsBatch 批量获取账号今日统计，优先走批量 SQL，失败时回退单账号查询。
 func (s *AccountUsageService) GetTodayStatsBatch(ctx context.Context, accountIDs []int64) (map[int64]*WindowStats, error) {
+	return s.getTodayStatsBatch(ctx, accountIDs, false)
+}
+
+// GetTodayStatsBatchStrict is used by operational views that must not render
+// failed account queries as real zero-usage observations.
+func (s *AccountUsageService) GetTodayStatsBatchStrict(ctx context.Context, accountIDs []int64) (map[int64]*WindowStats, error) {
+	return s.getTodayStatsBatch(ctx, accountIDs, true)
+}
+
+func (s *AccountUsageService) getTodayStatsBatch(ctx context.Context, accountIDs []int64, strict bool) (map[int64]*WindowStats, error) {
 	uniqueIDs := make([]int64, 0, len(accountIDs))
 	seen := make(map[int64]struct{}, len(accountIDs))
 	for _, accountID := range accountIDs {
@@ -1436,6 +1446,9 @@ func (s *AccountUsageService) GetTodayStatsBatch(ctx context.Context, accountIDs
 		g.Go(func() error {
 			stats, err := s.usageLogRepo.GetAccountWindowStats(gctx, id, startTime)
 			if err != nil {
+				if strict {
+					return fmt.Errorf("get today stats for account %d: %w", id, err)
+				}
 				return nil
 			}
 			mu.Lock()
@@ -1445,7 +1458,9 @@ func (s *AccountUsageService) GetTodayStatsBatch(ctx context.Context, accountIDs
 		})
 	}
 
-	_ = g.Wait()
+	if err := g.Wait(); strict && err != nil {
+		return nil, err
+	}
 
 	for _, accountID := range uniqueIDs {
 		if _, ok := result[accountID]; !ok {

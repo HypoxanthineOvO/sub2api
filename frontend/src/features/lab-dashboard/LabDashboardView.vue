@@ -88,5 +88,7 @@ onMounted(load)
 .dark .lab-dashboard__refresh { color: #e5e7eb; border-color: #475569; }
 .dark .lab-dashboard__summary div, .dark .lab-dashboard__account, .dark .lab-dashboard__grid > div, .dark .lab-dashboard section > table { border-color: #334155; background: rgba(15,23,42,.72); }
 .dark .lab-dashboard th, .dark .lab-dashboard td { border-color: #334155; }
+.dark .lab-dashboard__account-head span { color: #fbbf24; }
+.dark .lab-dashboard__account-head .lab-dashboard__account-state--active { color: #34d399; }
 @media (max-width: 768px) { .lab-dashboard { padding: 16px; } .lab-dashboard__summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .lab-dashboard__grid { grid-template-columns: 1fr; } .lab-dashboard__grid > div { max-width: 100%; overflow-x: auto; } .lab-dashboard__grid table { min-width: 360px; } section > table { max-width: 100%; overflow-x: auto; display: block; white-space: nowrap; } }
 </style>

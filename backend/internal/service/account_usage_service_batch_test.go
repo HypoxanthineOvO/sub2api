@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +14,21 @@ import (
 // Minimal UsageLogRepository stub for batch usage tests (HEAD lacks geminiUsageLogRepoStub).
 type usageBatchLogRepoStub struct{}
 
+type usageBatchFailureRepo struct{ usageBatchLogRepoStub }
+
+func (r *usageBatchFailureRepo) GetAccountWindowStats(context.Context, int64, time.Time) (*usagestats.AccountStats, error) {
+	return nil, errors.New("stats unavailable")
+}
+
 var _ UsageLogRepository = (*usageBatchLogRepoStub)(nil)
+
+func TestAccountUsageService_GetTodayStatsBatchStrictPropagatesFallbackFailure(t *testing.T) {
+	svc := &AccountUsageService{usageLogRepo: &usageBatchFailureRepo{}}
+	_, err := svc.GetTodayStatsBatchStrict(context.Background(), []int64{7})
+	if err == nil || !strings.Contains(err.Error(), "stats unavailable") {
+		t.Fatalf("expected strict batch failure, got %v", err)
+	}
+}
 
 func (r *usageBatchLogRepoStub) Create(context.Context, *UsageLog) (bool, error) {
 	return false, nil

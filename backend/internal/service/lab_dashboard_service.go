@@ -123,7 +123,7 @@ func (s *LabDashboardService) Get(ctx context.Context) (*LabDashboardResponse, e
 	if err != nil {
 		return nil, err
 	}
-	accounts, err := s.admin.ListAccountsForSchedulerScoreFilter(ctx, "", "", "", "", 0, "")
+	accounts, err := s.listAccounts(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +132,7 @@ func (s *LabDashboardService) Get(ctx context.Context) (*LabDashboardResponse, e
 	for i := range accounts {
 		ids = append(ids, accounts[i].ID)
 	}
-	today, err := s.accounts.GetTodayStatsBatch(ctx, ids)
+	today, err := s.accounts.GetTodayStatsBatchStrict(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -277,6 +277,38 @@ func (s *LabDashboardService) Get(ctx context.Context) (*LabDashboardResponse, e
 		result.RecentUsage = append(result.RecentUsage, recent)
 	}
 	return result, nil
+}
+
+func (s *LabDashboardService) listAccounts(ctx context.Context) ([]Account, error) {
+	if s.cfg == nil || len(s.cfg.LabDashboard.AccountGroupIDs) == 0 {
+		accounts, _, err := s.admin.ListAccounts(ctx, 1, 500, "", "", "", "", 0, "", "name", "asc")
+		return accounts, err
+	}
+
+	byID := make(map[int64]Account)
+	for _, groupID := range s.cfg.LabDashboard.AccountGroupIDs {
+		if groupID <= 0 {
+			continue
+		}
+		accounts, err := s.admin.ListAccountsForSchedulerScoreFilter(ctx, "", "", "", "", groupID, "")
+		if err != nil {
+			return nil, err
+		}
+		for _, account := range accounts {
+			byID[account.ID] = account
+		}
+	}
+	accounts := make([]Account, 0, len(byID))
+	for _, account := range byID {
+		accounts = append(accounts, account)
+	}
+	sort.Slice(accounts, func(i, j int) bool {
+		if accounts[i].Name == accounts[j].Name {
+			return accounts[i].ID < accounts[j].ID
+		}
+		return accounts[i].Name < accounts[j].Name
+	})
+	return accounts, nil
 }
 
 func configTimezone(cfg *config.Config) string {
