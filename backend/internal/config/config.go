@@ -4,9 +4,11 @@ package config
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math"
+	"net"
 	"net/textproto"
 	"net/url"
 	"os"
@@ -99,6 +101,44 @@ type Config struct {
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
+	SelectedNode            SelectedNodeConfig            `mapstructure:"selected_node"`
+}
+
+func (c *Config) validateSelectedNode() error {
+	if !c.SelectedNode.Enabled {
+		return nil
+	}
+	if c.SelectedNode.TimeoutMS <= 0 || c.SelectedNode.TimeoutMS > 2000 {
+		return fmt.Errorf("selected_node.timeout_ms must be between 1 and 2000")
+	}
+	if c.SelectedNode.FreshTTLSeconds < 0 || c.SelectedNode.StaleTTLSeconds < c.SelectedNode.FreshTTLSeconds {
+		return fmt.Errorf("selected_node stale/fresh TTL values are invalid")
+	}
+	if c.SelectedNode.MaxResponseBytes <= 0 {
+		return fmt.Errorf("selected_node.max_response_bytes must be positive")
+	}
+	if err := validateSelectedNodeEndpoint(c.SelectedNode.Endpoint); err != nil {
+		return fmt.Errorf("selected_node.endpoint: %w", err)
+	}
+	if strings.TrimSpace(c.SelectedNode.Token) == "" {
+		return fmt.Errorf("selected_node.token is required when enabled")
+	}
+	if c.SelectedNode.FailureBackoffSeconds < 1 || c.SelectedNode.FailureBackoffSeconds > 60 {
+		return fmt.Errorf("selected_node.failure_backoff_seconds must be between 1 and 60")
+	}
+	return nil
+}
+
+type SelectedNodeConfig struct {
+	Enabled               bool              `mapstructure:"enabled"`
+	Endpoint              string            `mapstructure:"endpoint"`
+	Token                 string            `mapstructure:"token"`
+	TimeoutMS             int               `mapstructure:"timeout_ms"`
+	FreshTTLSeconds       int               `mapstructure:"fresh_ttl_seconds"`
+	StaleTTLSeconds       int               `mapstructure:"stale_ttl_seconds"`
+	FailureBackoffSeconds int               `mapstructure:"failure_backoff_seconds"`
+	MaxResponseBytes      int64             `mapstructure:"max_response_bytes"`
+	ProxySlots            map[string]string `mapstructure:"proxy_slots"`
 }
 
 type LogConfig struct {
@@ -1745,6 +1785,24 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config error: %w", err)
 	}
+	if value, ok := os.LookupEnv("SELECTED_NODE_PROXY_SLOTS"); ok {
+		if err := json.Unmarshal([]byte(value), &cfg.SelectedNode.ProxySlots); err != nil {
+			return nil, fmt.Errorf("parse SELECTED_NODE_PROXY_SLOTS: expected JSON object: %w", err)
+		}
+	}
+	cfg.SelectedNode.Endpoint = strings.TrimSpace(cfg.SelectedNode.Endpoint)
+	cfg.SelectedNode.Token = strings.TrimSpace(cfg.SelectedNode.Token)
+	if len(cfg.SelectedNode.ProxySlots) > 0 {
+		normalized := make(map[string]string, len(cfg.SelectedNode.ProxySlots))
+		for proxyID, slot := range cfg.SelectedNode.ProxySlots {
+			proxyID = strings.TrimSpace(proxyID)
+			slot = strings.TrimSpace(slot)
+			if proxyID != "" && slot != "" {
+				normalized[proxyID] = slot
+			}
+		}
+		cfg.SelectedNode.ProxySlots = normalized
+	}
 	if trustedProxiesEnvConfigured {
 		cfg.Server.TrustedProxies = normalizeStringSlice(strings.Split(trustedProxiesEnv, ","))
 	}
@@ -1917,6 +1975,14 @@ func configureConfigSource(setConfigFile, addConfigPath func(string)) {
 }
 
 func setDefaults() {
+	viper.SetDefault("selected_node.enabled", false)
+	viper.SetDefault("selected_node.endpoint", "")
+	viper.SetDefault("selected_node.token", "")
+	viper.SetDefault("selected_node.timeout_ms", 800)
+	viper.SetDefault("selected_node.fresh_ttl_seconds", 10)
+	viper.SetDefault("selected_node.stale_ttl_seconds", 60)
+	viper.SetDefault("selected_node.failure_backoff_seconds", 5)
+	viper.SetDefault("selected_node.max_response_bytes", int64(65536))
 	viper.SetDefault("run_mode", RunModeStandard)
 
 	// Server
@@ -2563,6 +2629,9 @@ func setEnvReachableDefaults() {
 }
 
 func (c *Config) Validate() error {
+	if err := c.validateSelectedNode(); err != nil {
+		return err
+	}
 	forwardedClientIPHeaders, err := NormalizeForwardedClientIPHeaders(c.Security.ForwardedClientIPHeaders)
 	if err != nil {
 		return fmt.Errorf("security.forwarded_client_ip_headers: %w", err)
@@ -3694,6 +3763,27 @@ func ValidateAbsoluteHTTPURL(raw string) error {
 	}
 	if u.Fragment != "" {
 		return fmt.Errorf("must not include fragment")
+	}
+	return nil
+}
+
+func validateSelectedNodeEndpoint(raw string) error {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return err
+	}
+	if u.Scheme != "http" || u.User != nil || u.Host == "" {
+		return fmt.Errorf("must be an unauthenticated absolute HTTP URL")
+	}
+	ip := net.ParseIP(u.Hostname())
+	if ip == nil || !ip.IsLoopback() {
+		return fmt.Errorf("host must be a literal loopback address")
+	}
+	if u.Port() == "" {
+		return fmt.Errorf("port is required")
+	}
+	if u.Path != "/v1/selected-nodes" || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("path must be /v1/selected-nodes without query or fragment")
 	}
 	return nil
 }

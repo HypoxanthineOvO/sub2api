@@ -335,6 +335,33 @@
                 </span>
               </div>
               <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+              <div
+                v-if="row.proxy"
+                class="flex max-w-[240px] items-start gap-1 text-xs text-cyan-700 dark:text-cyan-300"
+                :data-selected-node-status="formatProxySelectedNode(row.proxy).status"
+              >
+                <div class="min-w-0">
+                  <div class="truncate">{{ formatProxySelectedNode(row.proxy).text }}</div>
+                  <div
+                    v-if="formatProxySelectedNode(row.proxy).observedText"
+                    class="truncate text-[10px] text-gray-500 dark:text-gray-400"
+                  >
+                    {{ formatProxySelectedNode(row.proxy).observedText }}
+                  </div>
+                </div>
+                <HelpTooltip :content="formatProxySelectedNode(row.proxy).title" trigger="click" width-class="w-72">
+                  <template #trigger>
+                    <button
+                      type="button"
+                      class="mt-0.5 inline-flex shrink-0 rounded text-gray-400 hover:text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+                      data-test="selected-node-help"
+                      :aria-label="`节点状态说明：${formatProxySelectedNode(row.proxy).text}`"
+                    >
+                      <Icon name="infoCircle" size="xs" />
+                    </button>
+                  </template>
+                </HelpTooltip>
+              </div>
               <div v-if="row.proxy && row.proxy.expires_at" class="flex items-center gap-2 text-xs">
                 <span class="text-gray-600 dark:text-gray-300">{{ formatDateTime(row.proxy.expires_at) }}</span>
                 <span :class="proxyExpiryBadge(row.proxy)">{{ proxyExpiryText(row.proxy) }}</span>
@@ -528,6 +555,7 @@ import { fetchAllAccountIds } from '@/utils/accountSelection'
 import { buildGrokUsageRefreshKey, buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
+import { formatProxySelectedNode } from '@/utils/proxySelectedNode'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'

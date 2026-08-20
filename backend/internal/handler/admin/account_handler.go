@@ -64,6 +64,7 @@ type AccountHandler struct {
 	grokImportProber        grokImportProber
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
+	selectedNodeEnricher    service.SelectedNodeEnricher
 }
 
 // SetUpstreamBillingProbeService attaches the optional remote billing probe service.
@@ -548,6 +549,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 			return
 		}
 	}
+	h.enrichAccountSelectedNodes(c.Request.Context(), accounts)
 
 	// Get current concurrency counts for all accounts
 	accountIDs := make([]int64, len(accounts))
@@ -703,6 +705,20 @@ func buildAccountsListETag(
 	platform, accountType, status, search string,
 	lite bool,
 ) string {
+	projectedItems := make([]AccountWithConcurrency, len(items))
+	for i := range items {
+		projectedItems[i] = items[i]
+		if items[i].Account == nil {
+			continue
+		}
+		accountCopy := *items[i].Account
+		if items[i].Account.Proxy != nil {
+			proxyCopy := *items[i].Account.Proxy
+			proxyCopy.SelectedNodeObservedAt = ""
+			accountCopy.Proxy = &proxyCopy
+		}
+		projectedItems[i].Account = &accountCopy
+	}
 	payload := struct {
 		Total       int64                    `json:"total"`
 		Page        int                      `json:"page"`
@@ -722,7 +738,7 @@ func buildAccountsListETag(
 		Status:      status,
 		Search:      search,
 		Lite:        lite,
-		Items:       items,
+		Items:       projectedItems,
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -730,6 +746,32 @@ func buildAccountsListETag(
 	}
 	sum := sha256.Sum256(raw)
 	return "\"" + hex.EncodeToString(sum[:]) + "\""
+}
+
+func (h *AccountHandler) enrichAccountSelectedNodes(ctx context.Context, accounts []service.Account) {
+	if h == nil || h.selectedNodeEnricher == nil || len(accounts) == 0 {
+		return
+	}
+	byID := make(map[int64][]*service.Proxy)
+	representatives := make([]*service.Proxy, 0)
+	for i := range accounts {
+		proxy := accounts[i].Proxy
+		if proxy == nil {
+			continue
+		}
+		if _, exists := byID[proxy.ID]; !exists {
+			representatives = append(representatives, proxy)
+		}
+		byID[proxy.ID] = append(byID[proxy.ID], proxy)
+	}
+	h.selectedNodeEnricher.EnrichProxies(ctx, representatives)
+	for _, representative := range representatives {
+		for _, proxy := range byID[representative.ID] {
+			proxy.SelectedNodeName = representative.SelectedNodeName
+			proxy.SelectedNodeStatus = representative.SelectedNodeStatus
+			proxy.SelectedNodeObservedAt = representative.SelectedNodeObservedAt
+		}
+	}
 }
 
 func ifNoneMatchMatched(ifNoneMatch, etag string) bool {

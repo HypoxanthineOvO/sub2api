@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,10 +9,31 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+type stubSelectedNodeEnricher struct {
+	calls     int
+	batchSize int
+	fail      bool
+}
+
+func (s *stubSelectedNodeEnricher) EnrichProxies(_ context.Context, proxies []*service.Proxy) {
+	s.calls++
+	s.batchSize = len(proxies)
+	for _, proxy := range proxies {
+		if s.fail {
+			proxy.SelectedNodeStatus = service.SelectedNodeStatusUnavailable
+			continue
+		}
+		proxy.SelectedNodeName = "Hong Kong HKT-01"
+		proxy.SelectedNodeStatus = service.SelectedNodeStatusFresh
+		proxy.SelectedNodeObservedAt = "2026-08-20T06:00:00Z"
+	}
+}
 
 func setupAccountListRouter() (*gin.Engine, *stubAdminService) {
 	gin.SetMode(gin.TestMode)
@@ -50,6 +72,51 @@ func TestAccountHandlerListIncludesCreatedAt(t *testing.T) {
 	require.NoError(t, err)
 	_, offset := parsed.Zone()
 	require.Equal(t, 0, offset)
+}
+
+func TestAccountHandlerListEnrichesSelectedNodeOnceAndIncludesStateInETag(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	adminSvc := newStubAdminService()
+	proxy := &service.Proxy{ID: 4, Name: "slot-a", Protocol: "http", Host: "127.0.0.1", Port: 17901, Status: service.StatusActive}
+	adminSvc.accounts = []service.Account{
+		{ID: 701, Name: "a", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Status: service.StatusActive, Proxy: proxy},
+		{ID: 702, Name: "b", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Status: service.StatusActive, Proxy: proxy},
+	}
+	enricher := &stubSelectedNodeEnricher{}
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler.selectedNodeEnricher = enricher
+	router := gin.New()
+	router.GET("/api/v1/admin/accounts", handler.List)
+
+	first := httptest.NewRecorder()
+	router.ServeHTTP(first, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts", nil))
+	require.Equal(t, http.StatusOK, first.Code)
+	require.Equal(t, 1, enricher.calls)
+	require.Equal(t, 1, enricher.batchSize)
+	require.Contains(t, first.Body.String(), `"selected_node_name":"Hong Kong HKT-01"`)
+	firstETag := first.Header().Get("ETag")
+	require.NotEmpty(t, firstETag)
+
+	enricher.fail = true
+	second := httptest.NewRecorder()
+	router.ServeHTTP(second, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts", nil))
+	require.Equal(t, http.StatusOK, second.Code)
+	require.NotEqual(t, firstETag, second.Header().Get("ETag"))
+	require.Contains(t, second.Body.String(), `"selected_node_status":"unavailable"`)
+}
+
+func TestAccountsListETagIgnoresSelectedNodeObservationTimestamp(t *testing.T) {
+	items := []AccountWithConcurrency{{Account: &dto.Account{ID: 1, Proxy: &dto.Proxy{
+		ID: 4, SelectedNodeName: "Hong Kong HKT-01", SelectedNodeStatus: service.SelectedNodeStatusFresh,
+		SelectedNodeObservedAt: "2026-08-20T06:00:00Z",
+	}}}}
+	first := buildAccountsListETag(items, 1, 1, 20, "", "", "", "", false)
+	items[0].Proxy.SelectedNodeObservedAt = "2026-08-20T06:00:05Z"
+	second := buildAccountsListETag(items, 1, 1, 20, "", "", "", "", false)
+	require.Equal(t, first, second)
+	require.Equal(t, "2026-08-20T06:00:05Z", items[0].Proxy.SelectedNodeObservedAt)
+	items[0].Proxy.SelectedNodeStatus = service.SelectedNodeStatusStale
+	require.NotEqual(t, second, buildAccountsListETag(items, 1, 1, 20, "", "", "", "", false))
 }
 
 func TestAccountHandlerListReturnsSchedulerScoresPerGroup(t *testing.T) {
