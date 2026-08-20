@@ -272,7 +272,9 @@ func ProvideUpstreamBillingProbeService(
 ) *UpstreamBillingProbeService {
 	svc := NewUpstreamBillingProbeService(accountRepo, accountTestService, settingService)
 	svc.SetLeaderLock(lockCache, db)
-	svc.Start()
+	if autonomousWorkersEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 

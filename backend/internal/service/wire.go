@@ -17,6 +17,10 @@ import (
 	"go.uber.org/zap"
 )
 
+func autonomousWorkersEnabled() bool {
+	return os.Getenv("SUB2API_DISABLE_AUTONOMOUS_WORKERS") != "1"
+}
+
 func ProvideGrokOAuthService(proxyRepo ProxyRepository, oauthClient GrokOAuthClient, cfg *config.Config, redisClient *redis.Client) *GrokOAuthService {
 	svc := NewGrokOAuthService(proxyRepo, oauthClient, cfg)
 	// wire.go is depguard-exempt for redis; construct the Redis session store here.
@@ -102,7 +106,9 @@ func ProvideBatchImageModelPricingResolver(resolver *ModelPricingResolver) *Batc
 
 func ProvideBatchImageCleanupService(repo BatchImageRepository, accountRepo AccountRepository, cfg *config.Config) *BatchImageCleanupService {
 	svc := NewBatchImageCleanupService(repo, accountRepo, cfg)
-	svc.Start()
+	if autonomousWorkersEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -142,7 +148,9 @@ func ProvideTokenRefreshService(
 	// 调用侧显式注入后台刷新策略，避免策略漂移
 	svc.SetRefreshPolicy(DefaultBackgroundRefreshPolicy())
 	svc.SetAccountRuntimeBlocker(runtimeBlocker)
-	svc.Start()
+	if autonomousWorkersEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -296,7 +304,9 @@ func ProvideCNProviderBalanceCheckService(
 		minutes = cfg.Gateway.CNProviders.BalanceCheckIntervalMinutes
 	}
 	svc := NewCNProviderBalanceCheckService(accountRepo, balanceService, quotaService, cfg, time.Duration(minutes)*time.Minute)
-	svc.Start()
+	if autonomousWorkersEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -350,21 +360,27 @@ func ProvideGrokTokenProvider(
 func ProvideDashboardAggregationService(repo DashboardAggregationRepository, timingWheel *TimingWheelService, lockCache LeaderLockCache, db *sql.DB, cfg *config.Config) *DashboardAggregationService {
 	svc := NewDashboardAggregationService(repo, timingWheel, cfg)
 	svc.SetLeaderLock(lockCache, db)
-	svc.Start()
+	if autonomousWorkersEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
 // ProvideUsageCleanupService 创建并启动使用记录清理任务服务
 func ProvideUsageCleanupService(repo UsageCleanupRepository, timingWheel *TimingWheelService, dashboardAgg *DashboardAggregationService, cfg *config.Config) *UsageCleanupService {
 	svc := NewUsageCleanupService(repo, timingWheel, dashboardAgg, cfg)
-	svc.Start()
+	if autonomousWorkersEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
 // ProvideAccountExpiryService creates and starts AccountExpiryService.
 func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpiryService {
 	svc := NewAccountExpiryService(accountRepo, time.Minute)
-	svc.Start()
+	if autonomousWorkersEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -376,14 +392,18 @@ func ProvideOpenAICodexVersionSyncService(
 	githubClient GitHubReleaseClient,
 ) *OpenAICodexVersionSyncService {
 	svc := NewOpenAICodexVersionSyncService(settingRepo, settingService, githubClient, openAICodexVersionSyncInterval)
-	svc.Start()
+	if autonomousWorkersEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
 // ProvideProxyExpiryService creates and starts ProxyExpiryService.
 func ProvideProxyExpiryService(proxyRepo ProxyRepository) *ProxyExpiryService {
 	svc := NewProxyExpiryService(proxyRepo, time.Minute)
-	svc.Start()
+	if autonomousWorkersEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -393,7 +413,9 @@ func ProvideSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, se
 	svc.SetSettingRepository(settingRepo)
 	svc.SetNotificationEmailService(notificationEmailService)
 	svc.SetLeaderLock(lockCache, db)
-	svc.Start()
+	if autonomousWorkersEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -480,7 +502,9 @@ func ProvideOpsMetricsCollector(
 	cfg *config.Config,
 ) *OpsMetricsCollector {
 	collector := NewOpsMetricsCollector(opsRepo, settingRepo, accountRepo, concurrencyService, db, redisClient, cfg)
-	collector.Start()
+	if autonomousWorkersEnabled() {
+		collector.Start()
+	}
 	return collector
 }
 
@@ -493,7 +517,9 @@ func ProvideOpsAggregationService(
 	cfg *config.Config,
 ) *OpsAggregationService {
 	svc := NewOpsAggregationService(opsRepo, settingRepo, db, redisClient, cfg)
-	svc.Start()
+	if autonomousWorkersEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -507,7 +533,9 @@ func ProvideOpsAlertEvaluatorService(
 	proxyRepo ProxyRepository,
 ) *OpsAlertEvaluatorService {
 	svc := NewOpsAlertEvaluatorService(opsService, opsRepo, emailService, redisClient, cfg, proxyRepo)
-	svc.Start()
+	if autonomousWorkersEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -526,7 +554,9 @@ func ProvideOpsCleanupService(
 	opsService *OpsService,
 ) *OpsCleanupService {
 	svc := NewOpsCleanupService(opsRepo, db, redisClient, cfg, channelMonitorSvc, settingRepo)
-	svc.Start()
+	if autonomousWorkersEnabled() {
+		svc.Start()
+	}
 	if opsService != nil {
 		opsService.SetCleanupReloader(svc)
 	}
@@ -583,7 +613,9 @@ func ProvideSystemOperationLockService(repo IdempotencyRepository, cfg *config.C
 
 func ProvideIdempotencyCleanupService(repo IdempotencyRepository, cfg *config.Config) *IdempotencyCleanupService {
 	svc := NewIdempotencyCleanupService(repo, cfg)
-	svc.Start()
+	if autonomousWorkersEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -604,7 +636,9 @@ func ProvideScheduledTestRunnerService(
 	cfg *config.Config,
 ) *ScheduledTestRunnerService {
 	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, rateLimitSvc, cfg)
-	svc.Start()
+	if autonomousWorkersEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -617,7 +651,9 @@ func ProvideOpsScheduledReportService(
 	cfg *config.Config,
 ) *OpsScheduledReportService {
 	svc := NewOpsScheduledReportService(opsService, userService, emailService, redisClient, cfg)
-	svc.Start()
+	if autonomousWorkersEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -669,7 +705,9 @@ func ProvideBackupService(
 ) *BackupService {
 	svc := NewBackupService(settingRepo, cfg, encryptor, storeFactory, dumper)
 	svc.SetLeaderLock(lockCache, db)
-	svc.Start()
+	if autonomousWorkersEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -726,7 +764,9 @@ func ProvideOpsIngressRejectAggregator(opsRepo OpsRepository, opsService *OpsSer
 		return nil
 	}
 	aggregator := NewOpsIngressRejectAggregator(repo)
-	aggregator.Start()
+	if autonomousWorkersEnabled() {
+		aggregator.Start()
+	}
 	opsService.SetIngressRejectAggregator(aggregator)
 	return aggregator
 }
@@ -948,7 +988,9 @@ func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, 
 func ProvidePaymentOrderExpiryService(paymentSvc *PaymentService, lockCache LeaderLockCache, db *sql.DB) *PaymentOrderExpiryService {
 	svc := NewPaymentOrderExpiryService(paymentSvc, 60*time.Second)
 	svc.SetLeaderLock(lockCache, db)
-	svc.Start()
+	if autonomousWorkersEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -984,7 +1026,9 @@ func ProvideChannelMonitorRunner(
 		svc.SetScheduler(r)
 		svc.SetQuotaFetcher(quotaFetcher)
 	}
-	r.Start()
+	if autonomousWorkersEnabled() {
+		r.Start()
+	}
 	return r
 }
 
@@ -1001,7 +1045,7 @@ func ProvideChannelMonitorV2Service(repo ChannelMonitorV2Repository, settingServ
 // Set CHANNEL_MONITOR_V2_DISABLE_AGGREGATOR=1 to skip Start (local demo with seeded facts).
 func ProvideChannelMonitorV2Aggregator(repo ChannelMonitorV2Repository, db *sql.DB, settingService *SettingService) *ChannelMonitorV2Aggregator {
 	aggregator := NewChannelMonitorV2Aggregator(repo, db, settingService)
-	if os.Getenv("CHANNEL_MONITOR_V2_DISABLE_AGGREGATOR") == "1" {
+	if !autonomousWorkersEnabled() || os.Getenv("CHANNEL_MONITOR_V2_DISABLE_AGGREGATOR") == "1" {
 		return aggregator
 	}
 	aggregator.Start()

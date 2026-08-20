@@ -57,7 +57,9 @@ func ProvideBatchImageWorkerRuntime(
 		StaleAfter: NewBatchImageWorkerOptionsFromConfig(cfg).StaleActiveAfter,
 		Limit:      NewBatchImageWorkerOptionsFromConfig(cfg).RecoverLimit,
 	}
-	runtime.Start()
+	if autonomousWorkersEnabled() {
+		runtime.Start()
+	}
 	return runtime
 }
 

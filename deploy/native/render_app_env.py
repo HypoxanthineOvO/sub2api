@@ -18,6 +18,7 @@ PROFILES = {
         "REDIS_PORT": "6379",
         "SELECTED_NODE_ENDPOINT": "http://127.0.0.1:19090/v1/selected-nodes",
         "DATA_DIR": "/var/lib/vsp-sub2api/production/app",
+        "SUB2API_DISABLE_AUTONOMOUS_WORKERS": "0",
     },
     "rehearsal": {
         "SERVER_HOST": "127.0.0.1",
@@ -28,6 +29,10 @@ PROFILES = {
         "REDIS_PORT": "56379",
         "SELECTED_NODE_ENDPOINT": "http://127.0.0.1:19190/v1/selected-nodes",
         "DATA_DIR": "/var/lib/vsp-sub2api/rehearsal/app",
+        "SUB2API_DISABLE_AUTONOMOUS_WORKERS": "1",
+        "TOKEN_REFRESH_ENABLED": "false",
+        "GATEWAY_CN_PROVIDERS_BALANCE_CHECK_ENABLED": "false",
+        "CHANNEL_MONITOR_V2_DISABLE_AGGREGATOR": "1",
     },
 }
 
