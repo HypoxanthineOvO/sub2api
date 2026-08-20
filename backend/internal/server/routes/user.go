@@ -111,6 +111,8 @@ func RegisterUserRoutes(
 			usage.GET("/dashboard/snapshot-v2", h.Usage.DashboardSnapshotV2)
 			usage.POST("/dashboard/api-keys-usage", h.Usage.DashboardAPIKeysUsage)
 		}
+		// Shared read-only laboratory dashboard. Authentication is inherited from authenticated.
+		authenticated.GET("/lab/dashboard", h.LabDashboard.Get)
 
 		// 公告（用户可见）
 		announcements := authenticated.Group("/announcements")

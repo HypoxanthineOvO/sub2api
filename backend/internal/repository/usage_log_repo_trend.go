@@ -33,10 +33,10 @@ func (r *usageLogRepository) GetAPIKeyUsageTrend(ctx context.Context, startTime,
 	query := fmt.Sprintf(`
 		WITH top_keys AS (
 			SELECT api_key_id
-			FROM usage_logs
-			WHERE created_at >= $1 AND created_at < $2
-			GROUP BY api_key_id
-			ORDER BY SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens) DESC
+				FROM usage_logs
+				WHERE created_at >= $1 AND created_at < $2
+				GROUP BY api_key_id
+				ORDER BY SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens) DESC
 			LIMIT $3
 		)
 		SELECT
@@ -89,9 +89,9 @@ func (r *usageLogRepository) GetUserUsageTrend(ctx context.Context, startTime, e
 		WITH top_users AS (
 			SELECT user_id
 			FROM usage_logs
-			WHERE created_at >= $1 AND created_at < $2
-			GROUP BY user_id
-			ORDER BY SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens) DESC
+				WHERE created_at >= $1 AND created_at < $2
+				GROUP BY user_id
+				ORDER BY COALESCE(SUM(actual_cost), 0) DESC, user_id ASC
 			LIMIT $3
 		)
 		SELECT

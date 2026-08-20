@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -60,6 +61,38 @@ type UsageService struct {
 	userRepo             UserRepository
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
+}
+
+type UsageLogRequestKey struct {
+	UserID    int64
+	RequestID string
+}
+type usageLogRequestChainReader interface {
+	ListByUserRequestKeys(context.Context, []UsageLogRequestKey) ([]UsageLog, error)
+}
+
+func (s *UsageService) ListRequestChains(ctx context.Context, page []UsageLog) ([]UsageLog, error) {
+	reader, ok := s.usageRepo.(usageLogRequestChainReader)
+	if !ok {
+		return page, nil
+	}
+	keys := make([]UsageLogRequestKey, 0, len(page))
+	seen := map[UsageLogRequestKey]struct{}{}
+	for _, log := range page {
+		key := UsageLogRequestKey{UserID: log.UserID, RequestID: strings.TrimSpace(log.RequestID)}
+		if key.RequestID == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+	}
+	if len(keys) == 0 {
+		return page, nil
+	}
+	return reader.ListByUserRequestKeys(ctx, keys)
 }
 
 // NewUsageService 创建使用统计服务实例

@@ -194,7 +194,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/dashboard',
     name: 'Dashboard',
-    component: () => import('@/views/user/DashboardView.vue'),
+    component: () => import('@/features/lab-dashboard/LabDashboardView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
@@ -404,7 +404,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/admin/dashboard',
     name: 'AdminDashboard',
-    component: () => import('@/views/admin/DashboardView.vue'),
+    component: () => import('@/features/lab-dashboard/LabDashboardView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: true,

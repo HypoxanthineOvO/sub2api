@@ -160,6 +160,29 @@ func (r *usageLogRepository) ListWithFilters(ctx context.Context, params paginat
 	return logs, page, nil
 }
 
+func (r *usageLogRepository) ListByUserRequestKeys(ctx context.Context, keys []service.UsageLogRequestKey) ([]service.UsageLog, error) {
+	conditions := make([]string, 0, len(keys))
+	args := make([]any, 0, len(keys)*2)
+	for _, key := range keys {
+		if key.UserID <= 0 || strings.TrimSpace(key.RequestID) == "" {
+			continue
+		}
+		conditions = append(conditions, fmt.Sprintf("(user_id = $%d AND request_id = $%d)", len(args)+1, len(args)+2))
+		args = append(args, key.UserID, strings.TrimSpace(key.RequestID))
+	}
+	if len(conditions) == 0 {
+		return []service.UsageLog{}, nil
+	}
+	logs, err := r.queryUsageLogs(ctx, fmt.Sprintf("SELECT %s FROM usage_logs WHERE %s ORDER BY created_at ASC, id ASC", usageLogSelectColumns, strings.Join(conditions, " OR ")), args...)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.hydrateUsageLogAssociations(ctx, logs); err != nil {
+		return nil, err
+	}
+	return logs, nil
+}
+
 func upstreamModelMismatchCondition(column string, mismatch bool) string {
 	if mismatch {
 		return column + " IS TRUE"

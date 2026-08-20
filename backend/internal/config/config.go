@@ -102,6 +102,12 @@ type Config struct {
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
 	SelectedNode            SelectedNodeConfig            `mapstructure:"selected_node"`
+	LabDashboard            LabDashboardConfig            `mapstructure:"lab_dashboard"`
+}
+
+type LabDashboardConfig struct {
+	SchedulerGroupID int64   `mapstructure:"scheduler_group_id"`
+	AccountGroupIDs  []int64 `mapstructure:"account_group_ids"`
 }
 
 func (c *Config) validateSelectedNode() error {
@@ -1975,6 +1981,8 @@ func configureConfigSource(setConfigFile, addConfigPath func(string)) {
 }
 
 func setDefaults() {
+	viper.SetDefault("lab_dashboard.scheduler_group_id", 0)
+	viper.SetDefault("lab_dashboard.account_group_ids", []int64{})
 	viper.SetDefault("selected_node.enabled", false)
 	viper.SetDefault("selected_node.endpoint", "")
 	viper.SetDefault("selected_node.token", "")
