@@ -131,6 +131,13 @@
                         <span class="glass-muted">今日请求</span>
                         <strong class="glass-num">{{ formatNumber(card.todayRequests) }}</strong>
                       </div>
+                      <div class="billing-card-balance" data-test="account-balance">
+                        <span class="glass-muted">
+                          当前余额
+                          <span v-if="card.balanceLow" class="balance-low" data-test="balance-low">余额偏低</span>
+                        </span>
+                        <strong class="glass-num" :title="balanceText(card.balances)">{{ balanceText(card.balances) }}</strong>
+                      </div>
                     </div>
                   </GlassCard>
                 </div>
@@ -364,6 +371,8 @@ interface AccountCardModel {
   nodeBindingTitle: string
   hasNodeBinding: boolean
   quotaBased: boolean
+  balances: Array<{ currency: string; balance: number }>
+  balanceLow: boolean
   sortIndex: number
   planRank: number
 }
@@ -376,6 +385,27 @@ const clampPercent = (value: unknown): number | null => {
 }
 
 const percentText = (value: number | null): string => value === null ? '—' : `${value}%`
+
+const formatBalance = (entry: { currency: string; balance: number }): string => {
+  const currency = entry.currency.trim().toUpperCase() || 'CNY'
+  const balance = toFiniteNumber(entry.balance)
+  const formatted = balance >= 100
+    ? balance.toLocaleString('zh-CN', { maximumFractionDigits: 2 })
+    : balance.toFixed(2)
+  return `${currency} ${formatted}`
+}
+
+const balanceText = (balances: Array<{ currency: string; balance: number }>): string =>
+  balances.length > 0 ? balances.map(formatBalance).join(' · ') : '—'
+
+const accountQuotaPercent = (
+  account: LabDashboardAccount,
+  windows: string[],
+  legacyValue: number | undefined
+): number | null => {
+  const quotaWindow = account.quota_windows?.find((item) => windows.includes(item.window.toLowerCase()))
+  return clampPercent(quotaWindow?.used_percent ?? legacyValue)
+}
 
 const accountSelectionProbability = (account: LabDashboardAccount): number | null => {
   if (!account.schedulable || account.selection_probability_status === 'outside_first_choice_pool') return 0
@@ -432,8 +462,12 @@ const accountCards = computed<AccountCardModel[]>(() =>
   (data.value?.accounts ?? []).map((account, index) => {
     const nodeBinding = accountNodeBinding(account)
     const providerKey = normalizeProvider(account.platform)
-    const fiveHour = clampPercent(account.quota_5h_used_percent)
-    const sevenDay = clampPercent(account.quota_7d_used_percent)
+    const fiveHour = accountQuotaPercent(account, ['5h'], account.quota_5h_used_percent)
+    const sevenDay = accountQuotaPercent(account, ['weekly', '7d'], account.quota_7d_used_percent)
+    const quotaBased = account.billing_mode === 'coding' || (account.quota_windows?.length ?? 0) > 0
+    const balances = (account.balances ?? []).filter((entry) =>
+      typeof entry.currency === 'string' && Number.isFinite(Number(entry.balance))
+    )
     return {
       id: `${account.name}-${index}`,
       providerKey,
@@ -449,7 +483,9 @@ const accountCards = computed<AccountCardModel[]>(() =>
       nodeBindingText: nodeBinding.text,
       nodeBindingTitle: nodeBinding.title,
       hasNodeBinding: Boolean(account.slot_label || account.selected_node_name),
-      quotaBased: fiveHour !== null || sevenDay !== null,
+      quotaBased,
+      balances,
+      balanceLow: account.balance_low === true,
       sortIndex: index,
       planRank: accountPlanRank(account)
     }
@@ -634,6 +670,21 @@ onUnmounted(() => {
   gap: 12px;
   margin-top: auto;
   padding-top: 18px;
+}
+
+.billing-card-balance {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.billing-card-balance strong {
+  overflow-wrap: anywhere;
+  font-size: 15px;
+}
+
+.balance-low {
+  @apply ml-1 inline-flex rounded border border-red-400/30 bg-red-400/10 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:text-red-300;
 }
 
 .billing-card-metrics > div {

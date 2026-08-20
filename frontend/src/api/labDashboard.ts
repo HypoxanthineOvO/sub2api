@@ -7,6 +7,17 @@ export interface LabDashboardAccount {
   plan_type?: string
   status: string
   schedulable: boolean
+  billing_mode?: 'coding' | 'payg'
+  quota_windows?: Array<{
+    window: string
+    used_percent: number
+    reset_at?: string
+  }>
+  balances?: Array<{
+    currency: string
+    balance: number
+  }>
+  balance_low?: boolean
   quota_5h_used_percent?: number
   quota_7d_used_percent?: number
   quota_factor: number

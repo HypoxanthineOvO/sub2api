@@ -12,11 +12,12 @@ describe('LabDashboardView', () => {
       generated_at: '2026-08-20T00:00:00Z', timezone: 'Asia/Shanghai',
       summary: { today_actual_cost: 1, today_requests: 2, active_users: 1, schedulable_accounts: 1, total_accounts: 1, week_actual_cost: 3 },
       accounts: [
-        { name: 'Card A', platform: 'openai', type: 'oauth', status: 'active', schedulable: true, quota_5h_used_percent: 20, quota_7d_used_percent: 40, quota_factor: .5, selection_probability: .75, selection_probability_status: 'computed', today_requests: 2, today_actual_cost: 1 },
-        { name: 'Card B', platform: 'openai', type: 'oauth', status: 'active', schedulable: true, quota_5h_used_percent: 0, quota_7d_used_percent: 10, quota_factor: 1, selection_probability_status: 'outside_first_choice_pool', today_requests: 3, today_actual_cost: .25 },
-        { name: 'Card C', platform: 'openai', type: 'oauth', status: 'disabled', schedulable: false, quota_5h_used_percent: 0, quota_7d_used_percent: 100, quota_factor: 1, selection_probability_status: 'unavailable', today_requests: 0, today_actual_cost: 0 },
-        { name: 'DeepSeek Billed', platform: 'deepseek', type: 'apikey', status: 'active', schedulable: true, quota_factor: 1, selection_probability_status: 'unavailable', today_requests: 9, today_actual_cost: 2.5 },
-        { name: 'GLM Billed', platform: 'zhipu', type: 'apikey', status: 'active', schedulable: true, quota_factor: 1, selection_probability_status: 'unavailable', today_requests: 4, today_actual_cost: .5 }
+        { name: 'Card A', platform: 'openai', type: 'oauth', status: 'active', schedulable: true, billing_mode: 'coding', quota_windows: [{ window: '5h', used_percent: 20 }, { window: 'weekly', used_percent: 40 }], quota_factor: .5, selection_probability: .75, selection_probability_status: 'computed', today_requests: 2, today_actual_cost: 1 },
+        { name: 'Card B', platform: 'openai', type: 'oauth', status: 'active', schedulable: true, billing_mode: 'coding', quota_windows: [{ window: '5h', used_percent: 0 }, { window: 'weekly', used_percent: 10 }], quota_factor: 1, selection_probability_status: 'outside_first_choice_pool', today_requests: 3, today_actual_cost: .25 },
+        { name: 'Card C', platform: 'openai', type: 'oauth', status: 'disabled', schedulable: false, billing_mode: 'coding', quota_windows: [{ window: '5h', used_percent: 0 }, { window: 'weekly', used_percent: 100 }], quota_factor: 1, selection_probability_status: 'unavailable', today_requests: 0, today_actual_cost: 0 },
+        { name: 'DeepSeek Billed', platform: 'deepseek', type: 'apikey', status: 'active', schedulable: true, billing_mode: 'payg', balances: [{ currency: 'CNY', balance: 12.65 }, { currency: 'USD', balance: 1.75 }], balance_low: true, quota_factor: 1, selection_probability_status: 'unavailable', today_requests: 9, today_actual_cost: 2.5 },
+        { name: 'GLM Coding', platform: 'zhipu', type: 'apikey', status: 'active', schedulable: true, billing_mode: 'coding', quota_windows: [{ window: '5h', used_percent: 13 }, { window: 'weekly', used_percent: 92 }], quota_factor: 1, selection_probability_status: 'unavailable', today_requests: 4, today_actual_cost: .5 },
+        { name: 'Kimi Coding', platform: 'kimi', type: 'apikey', status: 'active', schedulable: true, billing_mode: 'coding', quota_windows: [{ window: '5h', used_percent: 0 }, { window: 'weekly', used_percent: 100 }], quota_factor: 1, selection_probability_status: 'unavailable', today_requests: 1, today_actual_cost: .1 }
       ],
       leaderboard: { rows: [{ display_name: 'Alice', today_actual_cost: 1, total_actual_cost: 3 }] },
       user_usage_24h: [{ bucket: '10:00', display_name: 'Alice', requests: 2, actual_cost: 1 }],
@@ -46,12 +47,20 @@ describe('LabDashboardView', () => {
     expect(wrapper.text()).toContain('最近 24 小时用户消费')
     expect(wrapper.text()).toContain('最近使用记录')
     expect(wrapper.text()).toContain('已暂停')
-    expect(wrapper.findAll('[data-test="account-card"]')).toHaveLength(5)
+    expect(wrapper.findAll('[data-test="account-card"]')).toHaveLength(6)
     expect(wrapper.get('[data-provider="openai"]').text()).toContain('3 个账号')
     expect(wrapper.get('[data-provider="deepseek"]').text()).toContain('今日费用')
     expect(wrapper.get('[data-provider="deepseek"]').text()).toContain('$2.5')
-    expect(wrapper.get('[data-provider="glm"]').text()).toContain('GLM Billed')
-    expect(wrapper.get('[data-provider="glm"]').text()).not.toContain('5 小时窗口')
+    expect(wrapper.get('[data-provider="deepseek"]').text()).toContain('当前余额')
+    expect(wrapper.get('[data-provider="deepseek"]').text()).toContain('CNY 12.65 · USD 1.75')
+    expect(wrapper.get('[data-provider="deepseek"]').text()).toContain('余额偏低')
+    expect(wrapper.get('[data-provider="glm"]').text()).toContain('GLM Coding')
+    expect(wrapper.get('[data-provider="glm"]').text()).toContain('5 小时窗口')
+    expect(wrapper.get('[data-provider="glm"]').text()).toContain('13%')
+    expect(wrapper.get('[data-provider="glm"]').text()).toContain('92%')
+    expect(wrapper.get('[data-provider="kimi"]').text()).toContain('Kimi Coding')
+    expect(wrapper.get('[data-provider="kimi"]').text()).toContain('5 小时窗口')
+    expect(wrapper.get('[data-provider="kimi"]').text()).toContain('100%')
     expect(wrapper.text()).not.toContain('编辑')
     expect(wrapper.text()).not.toContain('删除')
   })

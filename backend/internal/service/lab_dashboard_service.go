@@ -34,23 +34,38 @@ type LabDashboardSummary struct {
 }
 
 type LabDashboardAccount struct {
-	Name                       string   `json:"name"`
-	Platform                   string   `json:"platform"`
-	Type                       string   `json:"type"`
-	PlanType                   string   `json:"plan_type,omitempty"`
-	Status                     string   `json:"status"`
-	Schedulable                bool     `json:"schedulable"`
-	Quota5hUsedPercent         *float64 `json:"quota_5h_used_percent,omitempty"`
-	Quota7dUsedPercent         *float64 `json:"quota_7d_used_percent,omitempty"`
-	QuotaFactor                float64  `json:"quota_factor"`
-	SelectionProbability       *float64 `json:"selection_probability,omitempty"`
-	SelectionProbabilityStatus string   `json:"selection_probability_status"`
-	TodayRequests              int64    `json:"today_requests"`
-	TodayActualCost            float64  `json:"today_actual_cost"`
-	SlotLabel                  string   `json:"slot_label,omitempty"`
-	SelectedNodeName           string   `json:"selected_node_name,omitempty"`
-	SelectedNodeStatus         string   `json:"selected_node_status,omitempty"`
-	SelectedNodeObservedAt     string   `json:"selected_node_observed_at,omitempty"`
+	Name                       string                    `json:"name"`
+	Platform                   string                    `json:"platform"`
+	Type                       string                    `json:"type"`
+	PlanType                   string                    `json:"plan_type,omitempty"`
+	BillingMode                string                    `json:"billing_mode,omitempty"`
+	QuotaWindows               []LabDashboardQuotaWindow `json:"quota_windows,omitempty"`
+	Balances                   []LabDashboardBalance     `json:"balances,omitempty"`
+	BalanceLow                 bool                      `json:"balance_low,omitempty"`
+	Status                     string                    `json:"status"`
+	Schedulable                bool                      `json:"schedulable"`
+	Quota5hUsedPercent         *float64                  `json:"quota_5h_used_percent,omitempty"`
+	Quota7dUsedPercent         *float64                  `json:"quota_7d_used_percent,omitempty"`
+	QuotaFactor                float64                   `json:"quota_factor"`
+	SelectionProbability       *float64                  `json:"selection_probability,omitempty"`
+	SelectionProbabilityStatus string                    `json:"selection_probability_status"`
+	TodayRequests              int64                     `json:"today_requests"`
+	TodayActualCost            float64                   `json:"today_actual_cost"`
+	SlotLabel                  string                    `json:"slot_label,omitempty"`
+	SelectedNodeName           string                    `json:"selected_node_name,omitempty"`
+	SelectedNodeStatus         string                    `json:"selected_node_status,omitempty"`
+	SelectedNodeObservedAt     string                    `json:"selected_node_observed_at,omitempty"`
+}
+
+type LabDashboardQuotaWindow struct {
+	Window      string  `json:"window"`
+	UsedPercent float64 `json:"used_percent"`
+	ResetAt     string  `json:"reset_at,omitempty"`
+}
+
+type LabDashboardBalance struct {
+	Currency string  `json:"currency"`
+	Balance  float64 `json:"balance"`
 }
 
 type LabDashboardLeaderboard struct {
@@ -186,6 +201,7 @@ func (s *LabDashboardService) Get(ctx context.Context) (*LabDashboardResponse, e
 	for i := range accounts {
 		account := &accounts[i]
 		item := LabDashboardAccount{Name: account.Name, Platform: account.Platform, Type: account.Type, Status: account.Status, Schedulable: account.IsSchedulable(), QuotaFactor: OpenAIAccountQuotaTaperFactor(account, now), SelectionProbabilityStatus: "unavailable"}
+		item.BillingMode, item.QuotaWindows, item.Balances, item.BalanceLow = labDashboardAccountBilling(account)
 		if plan, ok := account.Extra["plan_type"].(string); ok {
 			item.PlanType = plan
 		}
@@ -332,6 +348,83 @@ func quotaPercent(extra map[string]any, key string) (float64, bool) {
 		return 0, false
 	}
 	return value, true
+}
+
+func labDashboardAccountBilling(account *Account) (string, []LabDashboardQuotaWindow, []LabDashboardBalance, bool) {
+	if account == nil {
+		return "", nil, nil, false
+	}
+
+	mode := account.GetAccountMode()
+	if account.IsOpenAIOAuth() {
+		mode = AccountModeCoding
+	}
+
+	var windows []LabDashboardQuotaWindow
+	switch {
+	case account.IsOpenAIOAuth():
+		windows = labDashboardQuotaWindows(account.Extra, "codex", "7d")
+	case mode == AccountModeCoding && (account.Platform == PlatformKimi || account.Platform == PlatformZhipu):
+		windows = labDashboardQuotaWindows(account.Extra, account.Platform, "weekly")
+	}
+	if mode != AccountModePayG {
+		return mode, windows, nil, false
+	}
+
+	balances := labDashboardBalances(account.Extra, account.Platform)
+	low, _ := account.Extra[account.Platform+"_balance_low"].(bool)
+	return mode, windows, balances, low
+}
+
+func labDashboardQuotaWindows(extra map[string]any, prefix, longWindow string) []LabDashboardQuotaWindow {
+	definitions := []struct {
+		window string
+		key    string
+		reset  string
+	}{
+		{window: "5h", key: prefix + "_5h_used_percent", reset: prefix + "_5h_reset_at"},
+		{window: "weekly", key: prefix + "_" + longWindow + "_used_percent", reset: prefix + "_" + longWindow + "_reset_at"},
+	}
+	windows := make([]LabDashboardQuotaWindow, 0, len(definitions))
+	for _, definition := range definitions {
+		value, ok := quotaPercent(extra, definition.key)
+		if !ok {
+			continue
+		}
+		window := LabDashboardQuotaWindow{Window: definition.window, UsedPercent: value}
+		if resetAt, ok := extra[definition.reset].(string); ok {
+			window.ResetAt = strings.TrimSpace(resetAt)
+		}
+		windows = append(windows, window)
+	}
+	return windows
+}
+
+func labDashboardBalances(extra map[string]any, platform string) []LabDashboardBalance {
+	prefix := platform + "_"
+	balances := make([]LabDashboardBalance, 0, 2)
+	if entries, ok := extra[prefix+"balances"].([]any); ok {
+		for _, raw := range entries {
+			entry, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			balance, ok := resolveAccountExtraNumber(entry, "balance")
+			if !ok {
+				continue
+			}
+			currency, _ := entry["currency"].(string)
+			balances = append(balances, LabDashboardBalance{Currency: strings.ToUpper(strings.TrimSpace(currency)), Balance: balance})
+		}
+	}
+	if len(balances) > 0 {
+		return balances
+	}
+	if balance, ok := resolveAccountExtraNumber(extra, prefix+"balance"); ok {
+		currency, _ := extra[prefix+"balance_currency"].(string)
+		return []LabDashboardBalance{{Currency: strings.ToUpper(strings.TrimSpace(currency)), Balance: balance}}
+	}
+	return nil
 }
 
 func filterLabDashboardAccounts(accounts []Account, cfg *config.Config) []Account {
