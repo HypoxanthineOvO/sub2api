@@ -38,7 +38,7 @@ checks. The script changes one symlink, validates Nginx, reloads it, verifies th
 HTTPS health endpoint, and waits for connections to the old port to drain. It
 does not stop either App process.
 
-## Promote without duplicate workers
+## Promote workers
 
 The canary starts with `SUB2API_DISABLE_AUTONOMOUS_WORKERS=1`. After its checks:
 
@@ -46,6 +46,12 @@ This existing switch disables the uncoordinated scheduled tests, channel
 monitors, expiry sweeps, refreshers, and similar autonomous jobs. A few queue
 consumers still start, but their work claims are coordinated through the shared
 database or Redis.
+
+The current application cannot transfer worker ownership without restarting an
+App process. During final promotion, old and new workers therefore overlap only
+while old HTTP connections drain. Routine deployment bounds this overlap to 120
+seconds and returns traffic to the old slot on timeout; it never force-stops
+active requests.
 
 1. Switch traffic back to blue.
 2. Re-run `install.sh` for green with `VSP_NATIVE_SLOT_MODE=active`.
@@ -73,3 +79,24 @@ old slot. No database or proxy rollback is involved.
 Only the active slot is enabled. When deploying in the other direction, enable
 the promoted slot and disable the retired slot before stopping it; this makes a
 host reboot start the same release that Nginx serves.
+
+## Routine releases
+
+After code review and repository validation, build as the regular user:
+
+```bash
+bash deploy/native/build.sh
+```
+
+The build records its exact Git commit. A routine release then needs one root
+command:
+
+```bash
+sudo bash /home/heyx/Workspace/VSP/VSP-Sub2API/deploy/native/deploy-app-release.sh
+```
+
+The script requires a clean tracked worktree and a build matching `HEAD`. It
+detects the inactive slot, stages it with autonomous workers disabled, performs
+a short canary switch, returns traffic to promote workers, switches back to the
+new slot, drains and stops the old slot, and updates boot enablement. It never
+restarts PostgreSQL, Redis, allocator, Selected Node, or proxy slots.
