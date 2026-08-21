@@ -378,6 +378,28 @@ func TestPricingService_MergesFallbackOnlyModels(t *testing.T) {
 	require.InDelta(t, 0.034, merged["gemini-3.1-flash-lite-image"].OutputCostPerImage, 1e-12)
 }
 
+func TestPricingService_FallbackOverridesStaleGPT56Rates(t *testing.T) {
+	dir := t.TempDir()
+	fallbackFile := filepath.Join(dir, "fallback.json")
+	require.NoError(t, os.WriteFile(fallbackFile, []byte(`{
+		"gpt-5.6-terra": {"input_cost_per_token": 0.000002, "output_cost_per_token": 0.000012},
+		"gpt-5.6-luna": {"input_cost_per_token": 0.0000002, "output_cost_per_token": 0.0000012}
+	}`), 0644))
+
+	svc := &PricingService{cfg: &config.Config{Pricing: config.PricingConfig{FallbackFile: fallbackFile}}}
+	remoteData, err := svc.parsePricingData([]byte(`{
+		"gpt-5.6-terra": {"input_cost_per_token": 0.000005, "output_cost_per_token": 0.00003},
+		"gpt-5.6-luna": {"input_cost_per_token": 0.000005, "output_cost_per_token": 0.00003}
+	}`))
+	require.NoError(t, err)
+
+	merged := svc.mergeFallbackPricingData(remoteData)
+	require.InDelta(t, 0.000002, merged["gpt-5.6-terra"].InputCostPerToken, 1e-12)
+	require.InDelta(t, 0.000012, merged["gpt-5.6-terra"].OutputCostPerToken, 1e-12)
+	require.InDelta(t, 0.0000002, merged["gpt-5.6-luna"].InputCostPerToken, 1e-12)
+	require.InDelta(t, 0.0000012, merged["gpt-5.6-luna"].OutputCostPerToken, 1e-12)
+}
+
 func TestGetModelPricing_Gpt53CodexSparkUsesGpt51CodexPricing(t *testing.T) {
 	sparkPricing := &LiteLLMModelPricing{InputCostPerToken: 1}
 	gpt53Pricing := &LiteLLMModelPricing{InputCostPerToken: 9}

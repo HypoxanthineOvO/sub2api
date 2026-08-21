@@ -408,17 +408,25 @@ func (s *BillingService) initFallbackPricing() {
 
 	// ---- DeepSeek V4 系列 ----
 	// Source: https://api-docs.deepseek.com/quick_start/pricing
+	// 2026-08 官方调整为峰谷定价：Peak hours 01:00-04:00 / 06:00-10:00 UTC，Off-peak 为 Peak 的 50%。
+	// 这里兜底取 Peak 价作为保守值；精确峰谷计费由 channel_model_pricing.time_pricing 承担。
 	// （deepseek-chat / deepseek-reasoner 为 deepseek-v4-flash 的兼容别名，2026/07/24 弃用）
 	s.fallbackPrices["deepseek-v4-pro"] = &ModelPricing{
-		InputPricePerToken:     4.35e-7,  // $0.435 per MTok (cache miss)
-		OutputPricePerToken:    8.7e-7,   // $0.87 per MTok
-		CacheReadPricePerToken: 3.625e-9, // $0.003625 per MTok (cache hit)
+		InputPricePerToken:     1.32e-6, // $1.32 per MTok (peak, cache miss)
+		OutputPricePerToken:    3.96e-6, // $3.96 per MTok (peak)
+		CacheReadPricePerToken: 4.4e-8,  // $0.044 per MTok (peak, cache hit)
 		SupportsCacheBreakdown: false,
 	}
 	s.fallbackPrices["deepseek-v4-flash"] = &ModelPricing{
-		InputPricePerToken:     1.4e-7, // $0.14 per MTok (cache miss)
-		OutputPricePerToken:    2.8e-7, // $0.28 per MTok
-		CacheReadPricePerToken: 2.8e-9, // $0.0028 per MTok (cache hit)
+		InputPricePerToken:     4.4e-7,  // $0.44 per MTok (peak, cache miss)
+		OutputPricePerToken:    1.32e-6, // $1.32 per MTok (peak)
+		CacheReadPricePerToken: 1.4e-8,  // $0.014 per MTok (peak, cache hit)
+		SupportsCacheBreakdown: false,
+	}
+	s.fallbackPrices["deepseek-v4-flash-vision-exp"] = &ModelPricing{
+		InputPricePerToken:     4.4e-7,  // $0.44 per MTok (peak, cache miss)
+		OutputPricePerToken:    1.32e-6, // $1.32 per MTok (peak)
+		CacheReadPricePerToken: 1.4e-8,  // $0.014 per MTok (peak, cache hit)
 		SupportsCacheBreakdown: false,
 	}
 

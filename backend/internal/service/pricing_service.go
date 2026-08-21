@@ -567,7 +567,7 @@ func (s *PricingService) mergeFallbackPricingData(data map[string]*LiteLLMModelP
 	}
 	merged := 0
 	for modelName, pricing := range fallbackData {
-		if _, ok := data[modelName]; ok {
+		if _, ok := data[modelName]; ok && !isAuthoritativeFallbackModel(modelName) {
 			continue
 		}
 		data[modelName] = pricing
@@ -577,6 +577,15 @@ func (s *PricingService) mergeFallbackPricingData(data map[string]*LiteLLMModelP
 		logger.LegacyPrintf("service.pricing", "[Pricing] Merged %d fallback-only models", merged)
 	}
 	return data
+}
+
+func isAuthoritativeFallbackModel(modelName string) bool {
+	switch strings.ToLower(strings.TrimSpace(modelName)) {
+	case "gpt-5.6-terra", "gpt-5.6-luna":
+		return true
+	default:
+		return false
+	}
 }
 
 // useFallbackPricing 使用回退价格文件
