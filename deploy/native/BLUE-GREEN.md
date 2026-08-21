@@ -50,6 +50,10 @@ bash deploy/native/build.sh
 sudo env VSP_NATIVE_RELEASE=<release> VSP_NATIVE_SLOT=green \
   VSP_NATIVE_SLOT_MODE=canary bash deploy/native/install.sh
 sudo systemctl start vsp-sub2api-app-slot@green.service
+for _ in $(seq 1 30); do
+  curl --noproxy '*' --fail http://127.0.0.1:19822/health && break
+  sleep 1
+done
 curl --noproxy '*' --fail http://127.0.0.1:19822/health
 ```
 
