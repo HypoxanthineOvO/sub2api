@@ -37,6 +37,7 @@ created: 2026-08-21T09:05:00Z
 | `M8` | 在 native 栈上切换 App release | 构建/安装 `40fb634ad`，启动 19822，健康检查通过后切流，旧 App 排空并停止；不迁移或修改 PG/Redis/proxy 数据 |
 | `M9` | 完成上线验证 | GLM 测试、CN 查询入口、`/health`、生产 target、关键日志通过；确认当前 release 已变为 `40fb634ad` |
 | `M10` | 跟进上游 PR 与同步风险 | 记录 PR #6009/#6011 状态及 fork 落后 upstream 的后续处理建议 |
+| `M11` | 收敛常规 App 发布入口 | Agent 完成测试、构建和 push 后，用户用一条 sudo 命令自动完成 blue-green canary、晋升、切流、排空与停旧 slot |
 
 ## 验证入口
 

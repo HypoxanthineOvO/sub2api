@@ -1,7 +1,7 @@
 ---
 kind: cycle-execution
 cycle: native-blue-green-release
-updated: 2026-08-21T09:05:00Z
+updated: 2026-08-21T10:53:01Z
 ---
 
 # Execution
@@ -22,3 +22,11 @@ updated: 2026-08-21T09:05:00Z
 - Nginx upstream 安装脚本 `6340913d8` 执行成功；root `nginx -t` 与 reload 通过，active=blue，旧/新 App direct health 和 Nginx HTTPS health 均通过。下一步进入第一次 green canary 切流。
 - green canary 切流后 GLM 测试与 CN 额度查询均由用户确认通过，生产真实 `/responses` 与用户 API 持续返回 200。随后切回 blue，将 green 晋升为 active worker 模式，再最终切到 green；19821 排空后停止 legacy App。
 - 最终验收：active upstream=green，只有 19822 监听；green active/enabled、零重启，production target active/enabled 并依赖 green；旧 App inactive/disabled。PG、Redis、allocator、Selected Node 保持原 PID/启动时间。切流后未发现 5xx/panic/fatal，并观测到 181 个 HTTP 200；binary hash 与构建产物一致。
+
+## 2026-08-21 常规发布入口
+
+- 用户确认后续希望由 Agent 完成代码、测试、构建和 push，最后只需执行一条 sudo 命令。
+- commit `1331e8f0d` 已加入 `deploy/native/deploy-app-release.sh` 并 push 到 `origin/vsp/main`。脚本自动识别 active/inactive slot，执行 canary、worker 晋升、最终切流、排空、enable 新 slot、disable/stop 旧 slot。
+- 两轮独立只读审查修正了排空超时后误停 active slot、信号中断遗留双 worker、enablement 半提交、root Git safe.directory，以及构建期间源码变化等路径；最终复审无阻断问题。
+- `bash -n deploy/native/*.sh`、`deploy/native/verify.sh`、`TestAutonomousWorkers`、`git diff --check` 通过。提交后完整前端和 Go 构建通过，`dist/native/source-commit` 等于 `1331e8f0d2c95cb9dbdc007f726e26a92e2cf388`。
+- 本轮不再次切换生产；当前 green 线上状态保持不变。未来例行发布由用户运行 `sudo bash /home/heyx/Workspace/VSP/VSP-Sub2API/deploy/native/deploy-app-release.sh`。
