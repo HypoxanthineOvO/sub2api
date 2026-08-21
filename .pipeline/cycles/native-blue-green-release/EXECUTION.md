@@ -18,3 +18,4 @@ updated: 2026-08-21T09:05:00Z
 - 只读核验发现 `/etc/nginx/sites-enabled/api.vsplab.cn` 直接 `proxy_pass http://127.0.0.1:19821`，且与 `sites-available` 使用不同证书路径；`nginx -t` 需要 root 才能得到有效结果。
 - 用户反馈前次重启/切换方案质量不可接受。复盘确认原方案存在确定性的 PostgreSQL 认证错误、把单次外网探测当作生产就绪条件、Bash 失败路径可能绕过 rollback，以及 Redis TTL 场景下过严的 key 相等判断；静态检查和 dry-run 未覆盖这些真实失败。当前 blue-green 设计必须独立且最小，不继承旧状态机。
 - commit `08da1720e` 已推送 origin：加入 app-only slot unit、固定 release 的 slot symlink、Nginx upstream active link、切换/排空脚本以及最小验证契约。仓库验证通过；生产 root 安装与流量切换留待下一步。
+- 生产 green canary 已在 19822 启动并核验：release `40fb634ad`、`NRestarts=0`、health 正常、journal 无 fatal/panic/error。第一次命令因启动后立即 curl 产生约 1 秒竞态并在改 Nginx 前安全退出；commit `e10b7bbaf` 已将 runbook 改为有界 readiness 重试。下一步仅安装 Nginx upstream 结构，active 仍保持 blue/19821。
