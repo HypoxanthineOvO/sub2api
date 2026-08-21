@@ -21,6 +21,7 @@ grep -F 'install -m 0644 "$pricing_fallback"' "$native_dir/install.sh" >/dev/nul
 grep -F '"$release_dir/resources/model-pricing/model_prices_and_context_window.json"' \
   "$native_dir/install.sh" >/dev/null
 test -x "$native_dir/switch-app-slot.sh"
+test -x "$native_dir/install-blue-green-nginx.sh"
 test -s "$native_dir/nginx/blue.conf"
 test -s "$native_dir/nginx/green.conf"
 grep -Fqx 'ExecStart=/opt/vsp-sub2api/app-slots/%i/sub2api' \

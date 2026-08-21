@@ -10,31 +10,7 @@ Install the app-only unit and Nginx files, preserving blue (`19821`) as the
 initial active upstream:
 
 ```bash
-sudo bash -s <<'ROOT'
-set -euo pipefail
-repo=/home/heyx/Workspace/VSP/VSP-Sub2API
-
-for source in \
-  "$repo/ops/systemd/vsp-sub2api-app-slot@.service" \
-  "$repo/deploy/native/nginx/blue.conf" \
-  "$repo/deploy/native/nginx/green.conf" \
-  "$repo/deploy/native/nginx/sub2api-upstream.conf" \
-  "$repo/deploy/native/nginx/api.vsplab.cn.conf"
-do
-  test -f "$source"
-done
-
-install -m 0644 "$repo/ops/systemd/vsp-sub2api-app-slot@.service" /etc/systemd/system/
-install -d -m 0755 /etc/nginx/sub2api-upstreams
-install -m 0644 "$repo/deploy/native/nginx/blue.conf" /etc/nginx/sub2api-upstreams/
-install -m 0644 "$repo/deploy/native/nginx/green.conf" /etc/nginx/sub2api-upstreams/
-ln -sfn /etc/nginx/sub2api-upstreams/blue.conf /etc/nginx/sub2api-upstreams/active.conf
-install -m 0644 "$repo/deploy/native/nginx/sub2api-upstream.conf" /etc/nginx/conf.d/
-install -m 0644 "$repo/deploy/native/nginx/api.vsplab.cn.conf" /etc/nginx/sites-enabled/api.vsplab.cn
-systemctl daemon-reload
-nginx -t
-nginx -s reload
-ROOT
+sudo bash /home/heyx/Workspace/VSP/VSP-Sub2API/deploy/native/install-blue-green-nginx.sh
 ```
 
 `sites-enabled/api.vsplab.cn` is the active production file on this host. Do not
