@@ -20,6 +20,21 @@ test -s "$repo_root/backend/resources/model-pricing/model_prices_and_context_win
 grep -F 'install -m 0644 "$pricing_fallback"' "$native_dir/install.sh" >/dev/null
 grep -F '"$release_dir/resources/model-pricing/model_prices_and_context_window.json"' \
   "$native_dir/install.sh" >/dev/null
+test -x "$native_dir/switch-app-slot.sh"
+test -s "$native_dir/nginx/blue.conf"
+test -s "$native_dir/nginx/green.conf"
+grep -Fqx 'ExecStart=/opt/vsp-sub2api/app-slots/%i/sub2api' \
+  "$repo_root/ops/systemd/vsp-sub2api-app-slot@.service"
+if grep -Eq '^(Requires|PartOf)=' "$repo_root/ops/systemd/vsp-sub2api-app-slot@.service"; then
+  echo 'app slot unit must not control production data-plane units' >&2
+  exit 1
+fi
+if grep -Fq 'Requires=vsp-sub2api-app@production.service' \
+  "$repo_root/ops/systemd/vsp-sub2api-production.target"; then
+  echo 'production target must not hard-code the legacy App unit' >&2
+  exit 1
+fi
+grep -Fq 'SUB2API_DISABLE_AUTONOMOUS_WORKERS=$disable_workers' "$native_dir/install.sh"
 
 cat >"$temp_dir/source.env" <<'EOF'
 DATABASE_USER=sub2api

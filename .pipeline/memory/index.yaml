@@ -1,0 +1,76 @@
+active_by_dedupe_key:
+  adoption_brief: decision-1a74dca1978bf12281c28dede08e878d
+  blue_green_implementation_scope: preference-70b2b04ba95c2e95577ae436305b161c
+  prior_cutover_design_feedback: feedback-c773930818639027b98c084792ad1758
+  project_intent: requirement-b764444ff8fbe7faaaa4dc84f273713f
+authority_role: derived
+records:
+  - active: true
+    confidence: medium
+    created_at: 2026-08-21T08:59:15.622Z
+    dedupe_key: adoption_brief
+    id: decision-1a74dca1978bf12281c28dede08e878d
+    kind: decision
+    path: .pipeline/memory/records/project-ee2640454a9a/decision/decision-1a74dca1978bf12281c28dede08e878d.md
+    scope:
+      ref: project:vsp-sub2api
+      type: project
+    semantic_hash: 1a74dca1978bf12281c28dede08e878d4e53517c0f1d572286c685576868441a
+    source_refs:
+      - locator: README.md
+        ref: README.md
+        type: repository_file
+    supersedes: []
+    updated_at: 2026-08-21T08:59:15.622Z
+  - active: true
+    confidence: confirmed
+    created_at: 2026-08-21T09:25:00Z
+    dedupe_key: prior_cutover_design_feedback
+    id: feedback-c773930818639027b98c084792ad1758
+    kind: feedback
+    path: .pipeline/memory/records/cycle-5f90bec8ed61/feedback/feedback-c773930818639027b98c084792ad1758.md
+    scope:
+      ref: cycle:native-blue-green-release
+      type: cycle
+    semantic_hash: c773930818639027b98c084792ad175859bf68b117f447c265fd08794678dca0
+    source_refs:
+      - locator: prior cutover design quality
+        ref: conversation:2026-08-21
+        type: user_feedback
+    supersedes: []
+    updated_at: 2026-08-21T09:25:00Z
+  - active: true
+    confidence: confirmed
+    created_at: 2026-08-21T09:20:00Z
+    dedupe_key: blue_green_implementation_scope
+    id: preference-70b2b04ba95c2e95577ae436305b161c
+    kind: preference
+    path: .pipeline/memory/records/cycle-5f90bec8ed61/preference/preference-70b2b04ba95c2e95577ae436305b161c.md
+    scope:
+      ref: cycle:native-blue-green-release
+      type: cycle
+    semantic_hash: 70b2b04ba95c2e95577ae436305b161c6a75a8e1d68f7c05e157029ba72882ce
+    source_refs:
+      - locator: blue-green minimal implementation preference
+        ref: conversation:2026-08-21
+        type: user_request
+    supersedes: []
+    updated_at: 2026-08-21T09:20:00Z
+  - active: true
+    confidence: confirmed
+    created_at: 2026-08-21T08:59:15.622Z
+    dedupe_key: project_intent
+    id: requirement-b764444ff8fbe7faaaa4dc84f273713f
+    kind: requirement
+    path: .pipeline/memory/records/project-ee2640454a9a/requirement/requirement-b764444ff8fbe7faaaa4dc84f273713f.md
+    scope:
+      ref: project:vsp-sub2api
+      type: project
+    semantic_hash: b764444ff8fbe7faaaa4dc84f273713f4def6e4f90a9fe2863e561589cd9f45d
+    source_refs:
+      - locator: request.intent
+        ref: init
+        type: user_request
+    supersedes: []
+    updated_at: 2026-08-21T08:59:15.622Z
+schema_version: '1'

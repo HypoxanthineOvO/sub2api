@@ -1,0 +1,24 @@
+[Unit]
+Description=VSP Sub2API application slot (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=heyx
+Group=vsp-admin
+WorkingDirectory=/var/lib/vsp-sub2api/production/app
+EnvironmentFile=/etc/vsp-sub2api/production/app.env
+EnvironmentFile=/etc/vsp-sub2api/production/app-%i.env
+ExecStart=/opt/vsp-sub2api/app-slots/%i/sub2api
+Restart=always
+RestartSec=5
+TimeoutStopSec=90
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/vsp-sub2api/production/app
+
+[Install]
+WantedBy=vsp-sub2api-production.target

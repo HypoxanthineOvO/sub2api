@@ -1,0 +1,5 @@
+object_ref:
+  id: bootstrap-e8c204add975bd256a6204c2
+  kind: bootstrap_job
+schema_version: '1'
+status: initialized

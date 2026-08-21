@@ -5,7 +5,6 @@ Requires=vsp-redis@production.service
 Requires=vsp-mihomo-production@slot-a.service vsp-mihomo-production@slot-b.service vsp-mihomo-production@slot-c.service vsp-mihomo-production@slot-d.service vsp-mihomo-production@slot-e.service
 Requires=vsp-proxy-allocator@production.service
 Requires=vsp-selected-node@production.service
-Requires=vsp-sub2api-app@production.service
 After=network-online.target
 
 [Install]

@@ -1,0 +1,35 @@
+authority_role: derived
+context:
+  current_goal: null
+  next_action: Use /hw:guide to choose the next available workflow.
+  non_goals: []
+  recent_events: []
+  recent_verification: null
+  scope: []
+  workers: []
+cursor:
+  object_ref:
+    id: bootstrap-e8c204add975bd256a6204c2
+    kind: bootstrap_job
+  schema_version: '1'
+  streams: []
+object_ref:
+  id: bootstrap-e8c204add975bd256a6204c2
+  kind: bootstrap_job
+schema_version: '1'
+semantic_hash: b87bc3502ece2939a3aa03241561ab0adab3f4c39304c3def1ddb499efb4b699
+sources:
+  continuation:
+    object_ref:
+      id: bootstrap-e8c204add975bd256a6204c2
+      kind: bootstrap_job
+    semantic_hash: 33e6c8cc6f305c8750a238f14cceb8178c777fefc4bad3e3e0b4e8220693aa81
+    type: continuation
+  receipts: []
+  records:
+    - id: decision-1a74dca1978bf12281c28dede08e878d
+      semantic_hash: 1a74dca1978bf12281c28dede08e878d4e53517c0f1d572286c685576868441a
+      type: record
+    - id: requirement-b764444ff8fbe7faaaa4dc84f273713f
+      semantic_hash: b764444ff8fbe7faaaa4dc84f273713f4def6e4f90a9fe2863e561589cd9f45d
+      type: record
