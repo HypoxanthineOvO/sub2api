@@ -1,9 +1,23 @@
 <template>
-  <div v-if="visible" class="space-y-1">
+  <div
+    v-if="visible"
+    data-test="cn-provider-quota"
+    class="min-w-[220px] space-y-1"
+  >
     <!-- Tier rows: 5h + weekly utilization bars (snapshot renders on mount) -->
     <div v-if="data?.success && data.tiers?.length" class="space-y-1">
-      <div v-for="tier in data.tiers" :key="tier.window" class="flex items-center gap-1.5 text-[10px]">
-        <span class="w-10 shrink-0 text-gray-500 dark:text-gray-400">{{ windowLabel(tier.window) }}</span>
+      <div
+        v-for="tier in data.tiers"
+        :key="tier.window"
+        data-test="cn-provider-quota-tier"
+        class="flex min-w-0 items-center gap-1.5 text-[10px] leading-4"
+      >
+        <span
+          data-test="cn-provider-quota-label"
+          class="w-14 shrink-0 whitespace-nowrap text-gray-500 dark:text-gray-400"
+        >
+          {{ windowLabel(tier.window) }}
+        </span>
         <div class="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
           <div
             class="h-full rounded-full transition-all"
@@ -14,19 +28,25 @@
         <span :class="['shrink-0 font-medium', utilizationTextColor(tier.used_percent)]">
           {{ Math.round(tier.used_percent) }}%
         </span>
-        <span v-if="tier.reset_at" class="truncate text-gray-400 dark:text-gray-500" :title="tier.reset_at">
+        <span
+          v-if="tier.reset_at"
+          class="min-w-0 truncate text-gray-400 dark:text-gray-500"
+          :title="tier.reset_at"
+        >
           · {{ formatReset(tier.reset_at) }}
         </span>
       </div>
     </div>
 
-    <!-- Explicit refresh action (aligned with OpenAI "Query" / Grok "Probe" buttons):
-         the label is a verb so users can tell this chip is clickable, unlike the
-         old noun label ("5h/weekly") which read as a passive caption. -->
+    <!-- Explicit refresh action (aligned with the OpenAI "Query" / Grok "Probe"
+         buttons): a verb label tells users this chip is clickable. The previous
+         noun label ("5h/weekly") read as a passive caption and users could not
+         discover the manual refresh. -->
     <div class="flex flex-wrap items-center gap-1.5">
       <button
         type="button"
-        class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+        data-test="cn-provider-quota-probe"
+        class="inline-flex items-center gap-0.5 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium leading-4 text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
         :disabled="loading"
         :title="t('admin.accounts.cnProviders.probeTooltip')"
         @click="handleProbe()"
@@ -49,7 +69,11 @@
       </button>
     </div>
 
-    <div v-if="error" class="truncate text-[10px] text-red-600 dark:text-red-400" :title="error">
+    <div
+      v-if="error"
+      class="truncate text-[10px] leading-4 text-red-600 dark:text-red-400"
+      :title="error"
+    >
       {{ truncatedError }}
     </div>
   </div>

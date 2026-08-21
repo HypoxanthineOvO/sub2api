@@ -15,95 +15,81 @@ vi.mock('@/api/admin', () => ({
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
-    t: (key: string, params?: Record<string, unknown>) =>
-      params?.percent == null ? key : `${key}:${params.percent}`
+    t: (key: string) => key
   })
 }))
 
-const codingAccount = {
-  id: 201,
+const account = {
+  id: 7,
   platform: 'zhipu',
   type: 'apikey',
-  credentials: { account_mode: 'coding' }
-} as unknown as Account
-
-const freshAccount = { ...codingAccount, id: 202 } as Account
+  credentials: { account_mode: 'coding' },
+  extra: {
+    zhipu_5h_used_percent: 0,
+    zhipu_weekly_used_percent: 27,
+    zhipu_5h_reset_at: '2026-08-18T12:30:00+08:00',
+    zhipu_weekly_reset_at: '2026-08-22T00:00:00+08:00',
+    zhipu_usage_updated_at: new Date().toISOString()
+  }
+} as Account
 
 describe('CNProviderQuotaCell', () => {
   beforeEach(() => {
     queryQuota.mockReset()
   })
 
-  it('renders snapshot bars on mount without probing when snapshot is fresh', async () => {
-    queryQuota.mockResolvedValue({ success: true, tiers: [] })
-    const account = {
-      ...codingAccount,
-      extra: {
-        zhipu_5h_used_percent: 42,
-        zhipu_5h_reset_at: new Date(Date.now() + 3_600_000).toISOString(),
-        zhipu_weekly_used_percent: 25,
-        zhipu_weekly_reset_at: new Date(Date.now() + 86_400_000).toISOString(),
-        zhipu_usage_updated_at: new Date().toISOString()
-      }
-    } as unknown as Account
-
-    const wrapper = mount(CNProviderQuotaCell, { props: { account } })
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('42%')
-    expect(wrapper.text()).toContain('25%')
-    // Fresh snapshot: no auto probe request is issued
-    expect(queryQuota).not.toHaveBeenCalled()
-  })
-
-  it('auto-probes on mount when snapshot is stale or missing', async () => {
+  it('keeps the compact quota stack readable inside the account table cell', async () => {
     queryQuota.mockResolvedValue({
       success: true,
       tiers: [
-        { window: '5h', used_percent: 60 },
-        { window: 'weekly', used_percent: 30 }
+        { window: '5h', used_percent: 0, reset_at: '2026-08-18T12:30:00+08:00' },
+        { window: 'weekly', used_percent: 27, reset_at: '2026-08-22T00:00:00+08:00' }
       ]
     })
-    const wrapper = mount(CNProviderQuotaCell, { props: { account: freshAccount } })
-    await flushPromises()
-
-    expect(queryQuota).toHaveBeenCalledWith(202)
-    expect(wrapper.text()).toContain('60%')
-    expect(wrapper.text()).toContain('30%')
-  })
-
-  it('exposes an explicit action button that triggers a manual refresh', async () => {
-    queryQuota.mockResolvedValue({
-      success: true,
-      tiers: [{ window: '5h', used_percent: 80 }]
-    })
-    const wrapper = mount(CNProviderQuotaCell, { props: { account: freshAccount } })
-    await flushPromises()
-    queryQuota.mockClear()
-
-    await wrapper.get('button').trigger('click')
-    await flushPromises()
-
-    expect(queryQuota).toHaveBeenCalledWith(202)
-    expect(wrapper.text()).toContain('80%')
-  })
-
-  it('keeps snapshot bars visible when a probe fails', async () => {
-    queryQuota.mockResolvedValue({ success: false, error: 'upstream 500' })
-    const account = {
-      ...codingAccount,
-      extra: {
-        zhipu_5h_used_percent: 42,
-        zhipu_weekly_used_percent: 25,
-        zhipu_usage_updated_at: new Date().toISOString()
-      }
-    } as unknown as Account
-
     const wrapper = mount(CNProviderQuotaCell, { props: { account } })
-    await wrapper.get('button').trigger('click')
+
+    const root = wrapper.get('[data-test="cn-provider-quota"]')
+    expect(root.classes()).toContain('min-w-[220px]')
+
+    const probeButton = root.get('button')
+    expect(probeButton.classes()).toContain('whitespace-nowrap')
+    expect(probeButton.classes()).toContain('leading-4')
+    await probeButton.trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('42%')
-    expect(wrapper.text()).toContain('upstream 500')
+    const tiers = root.findAll('[data-test="cn-provider-quota-tier"]')
+    expect(tiers).toHaveLength(2)
+    for (const tier of tiers) {
+      expect(tier.classes()).toContain('min-w-0')
+      expect(tier.classes()).toContain('leading-4')
+    }
+
+    const labels = root.findAll('[data-test="cn-provider-quota-label"]')
+    expect(labels).toHaveLength(2)
+    for (const label of labels) {
+      expect(label.classes()).toContain('w-14')
+      expect(label.classes()).toContain('whitespace-nowrap')
+    }
+
+    expect(queryQuota).toHaveBeenCalledWith(account.id)
+  })
+
+  it('labels the refresh control with an explicit action verb, not a data caption', async () => {
+    const wrapper = mount(CNProviderQuotaCell, { props: { account } })
+    await flushPromises()
+
+    // The snapshot is fresh (usage_updated_at = now): bars render without probing.
+    expect(queryQuota).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('27%')
+
+    // The control reads as an action ("query"), unlike the old noun label
+    // ("5-hour window/weekly window") which looked like a passive caption.
+    // The i18n mock returns the key itself.
+    const probeButton = wrapper.get('[data-test="cn-provider-quota-probe"]')
+    expect(probeButton.text()).toBe('admin.accounts.cnProviders.probe')
+
+    await probeButton.trigger('click')
+    await flushPromises()
+    expect(queryQuota).toHaveBeenCalledWith(account.id)
   })
 })

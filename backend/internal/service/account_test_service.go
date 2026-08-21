@@ -101,7 +101,7 @@ const (
 	AccountTestModeGrokRealtime = "realtime"
 
 	defaultGrokRealtimeTestModel = "grok-voice-latest"
-	grokRealtimeProbeTimeout     = 12 * time.Second
+	grokRealtimeProbeTimeout     = DefaultGrokRealtimeDialTimeout
 )
 
 // isOpenAIImageModel checks if the model is an OpenAI image generation model (e.g. gpt-image-2).
@@ -285,6 +285,19 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	// Route to platform-specific test method
+	if account.IsCNProvider() {
+		switch account.GetAPIProtocol() {
+		case APIProtocolAdaptive:
+			return s.testCNProviderAdaptiveConnection(c, account, modelID, prompt)
+		case APIProtocolResponses:
+			return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
+		case APIProtocolChatCompletions:
+			return s.testCNProviderChatCompletionsConnection(c, account, modelID, prompt)
+		case APIProtocolAnthropic:
+			return s.testCNProviderAnthropicConnection(c, account, modelID)
+		}
+	}
+
 	if account.IsOpenAI() {
 		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
 	}
@@ -301,161 +314,28 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.routeAntigravityTest(c, account, modelID, prompt)
 	}
 
-	// 国产供应商（kimi/zhipu/deepseek）：按账号 api_protocol 走与真实转发
-	// 一致的端点。落入 testClaudeAccountConnection 会把 OpenAI 兼容 base_url
-	// （如 open.bigmodel.cn/api/paas/v4）拼上 /v1/messages，上游 404（
-	// /v4/v1/messages）。
-	if account.IsCNProvider() {
-		return s.testCNProviderAccountConnection(c, account, modelID, prompt)
-	}
-
 	return s.testClaudeAccountConnection(c, account, modelID)
 }
 
-// testCNProviderAccountConnection 测试国产 OpenAI 兼容供应商账号
-// （kimi/zhipu/deepseek）的连通性。测试路径与真实网关转发保持一致：
-//   - api_protocol=anthropic：直通供应商原生 Anthropic 端点
-//     {GetAnthropicProtocolBaseURL}/v1/messages（同
-//     forwardAnthropicViaNativeAnthropicEndpoint / nativeAnthropicTargetURL），
-//     Anthropic 格式 payload + setAnthropicAPIKeyAuthHeader 鉴权
-//   - chat_completions / responses：请求 {GetOpenAIFormatBaseURL}/chat/completions
-//     （同 buildOpenAIChatCompletionsURL；responses 账号用 chat completions
-//     端点做连通性探测，api_key 与计费链路一致）
-func (s *AccountTestService) testCNProviderAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
-	if account.Type != AccountTypeAPIKey {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
+func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		testModelID = openai.DefaultTestModel
 	}
-	authToken := account.GetOpenAIProtocolAPIKey()
+	testModelID = account.GetMappedModel(testModelID)
+
+	authToken := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
 	if authToken == "" {
 		return s.sendErrorAndEnd(c, "No API key available")
 	}
 
-	testModelID := strings.TrimSpace(modelID)
-	if testModelID == "" {
-		testModelID = claude.DefaultTestModel
-	}
-	// 与 testClaudeAccountConnection 一致：API Key 账号测试也应用通配符模型映射。
-	testModelID = account.GetMappedModel(testModelID)
-
-	if account.IsAnthropicProtocol() {
-		return s.testCNProviderAnthropicConnection(c, account, testModelID, authToken)
-	}
-
-	baseURL := strings.TrimSpace(account.GetOpenAIFormatBaseURL())
-	if baseURL == "" {
-		return s.sendErrorAndEnd(c, "No base URL available")
-	}
+	baseURL := account.GetOpenAIBaseURL()
 	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 	}
+
 	return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, normalizedBaseURL, authToken)
-}
-
-// testCNProviderAnthropicConnection 以 Anthropic 格式直通测试国产供应商的
-// 原生 Anthropic 端点。URL 组装、鉴权头与正式直通路径
-// （nativeAnthropicTargetURL / setAnthropicAPIKeyAuthHeader）对齐：朴素
-// /v1/messages 路径，不附加 ?beta=true。
-func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, account *Account, testModelID string, authToken string) error {
-	ctx := c.Request.Context()
-
-	baseURL := strings.TrimSpace(account.GetAnthropicProtocolBaseURL())
-	if baseURL == "" {
-		return s.sendErrorAndEnd(c, "No anthropic protocol base URL available")
-	}
-	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
-	}
-	// 配置防呆：api_protocol=anthropic 但 base_url 指向 OpenAI 兼容端点
-	// （如 .../api/paas/v4）时，直通路径必然 404（如 /v4/v1/messages）。
-	// 提前给出可操作的提示，而不是让上游 404 让人摸不着头脑。
-	if hint := cnAnthropicBaseURLMisconfigHint(normalizedBaseURL); hint != "" {
-		return s.sendErrorAndEnd(c, hint)
-	}
-	apiURL := strings.TrimRight(normalizedBaseURL, "/") + "/v1/messages"
-
-	// Set SSE headers
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	c.Writer.Flush()
-
-	payload, err := createTestPayload(testModelID)
-	if err != nil {
-		return s.sendErrorAndEnd(c, "Failed to create test payload")
-	}
-	payloadBytes, _ := json.Marshal(payload)
-
-	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
-	if err != nil {
-		return s.sendErrorAndEnd(c, "Failed to create request")
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("anthropic-version", "2023-06-01")
-	// 与真实 Claude Code 客户端流量保持一致的客户端特征头
-	for key, value := range claude.DefaultHeaders {
-		req.Header.Set(key, value)
-	}
-	// 默认 x-api-key；zhipu 等可经 extra.anthropic_apikey_auth_scheme 切 Bearer
-	setAnthropicAPIKeyAuthHeader(req.Header, account, authToken)
-
-	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
-	account.ApplyHeaderOverrides(req.Header)
-
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
-
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		errMsg := fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body))
-		// 401/403 表示凭证失效或账号被上游封禁，标记为 error 状态
-		if (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) && s.accountRepo != nil {
-			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
-		}
-		return s.sendErrorAndEnd(c, errMsg)
-	}
-
-	return s.processClaudeStream(c, resp.Body)
-}
-
-// cnAnthropicBaseURLMisconfigHint 检测 anthropic 协议账号的 base_url 是否
-// 误指向 OpenAI 兼容端点：路径含 /paas/、以 /chat/completions 结尾、或以
-// API 版本段（/v1、/v4 等，判定口径与 buildOpenAIEndpointURL 一致）结尾。
-// 命中时返回可操作的修复提示，未命中返回空串。
-func cnAnthropicBaseURLMisconfigHint(baseURL string) string {
-	parsed, err := url.Parse(strings.TrimSpace(baseURL))
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return ""
-	}
-	path := strings.ToLower(strings.TrimRight(parsed.Path, "/"))
-	if path == "" {
-		return ""
-	}
-	openAICompatShaped := strings.Contains(path, "/paas/") ||
-		strings.HasSuffix(path, "/chat/completions") ||
-		strings.HasSuffix(path, "/responses") ||
-		openAIBaseURLHasVersionSuffix(path)
-	if !openAICompatShaped {
-		return ""
-	}
-	return fmt.Sprintf(
-		"API protocol is anthropic but base_url (%s) looks like an OpenAI-compatible endpoint; "+
-			"requests would hit {base}/v1/messages and 404. Set base_url to the provider's Anthropic endpoint "+
-			"(e.g. https://open.bigmodel.cn/api/anthropic) or switch api_protocol to chat_completions.",
-		baseURL,
-	)
 }
 
 // testClaudeAccountConnection tests an Anthropic Claude account's connection
@@ -812,7 +692,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		apiURL = chatgptCodexAPIURL
 	} else if credentialAccount.Type == "apikey" {
 		// API Key - use Platform API
-		authToken = credentialAccount.GetOpenAIApiKey()
+		authToken = credentialAccount.GetOpenAIProtocolAPIKey()
 		if authToken == "" {
 			return s.sendErrorAndEnd(c, "No API key available")
 		}
@@ -828,7 +708,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		if !openai_compat.ShouldUseResponsesAPI(account.Extra) {
 			return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, normalizedBaseURL, authToken)
 		}
-		apiURL = buildOpenAIResponsesURL(normalizedBaseURL)
+		apiURL = buildOpenAIResponsesURLForPlatform(credentialAccount.Platform, normalizedBaseURL)
 	} else {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
 	}
@@ -2162,7 +2042,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		}
 		apiURL = chatgptCodexAPIURL
 	case account.Type == AccountTypeAPIKey:
-		authToken = account.GetOpenAIApiKey()
+		authToken = account.GetOpenAIProtocolAPIKey()
 		if authToken == "" {
 			return s.sendErrorAndEnd(c, "No API key available")
 		}
@@ -2174,7 +2054,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		if err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 		}
-		apiURL = buildOpenAIResponsesURL(normalizedBaseURL)
+		apiURL = buildOpenAIResponsesURLForPlatform(account.Platform, normalizedBaseURL)
 	default:
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
 	}
@@ -3192,6 +3072,13 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 }
 
 func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
+	if event.Type == "test_complete" {
+		if suppress, ok := c.Get(accountTestSuppressCompletionContextKey); ok {
+			if suppressCompletion, _ := suppress.(bool); suppressCompletion {
+				return
+			}
+		}
+	}
 	eventJSON, _ := json.Marshal(event)
 	if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", eventJSON); err != nil {
 		log.Printf("failed to write SSE event: %v", err)

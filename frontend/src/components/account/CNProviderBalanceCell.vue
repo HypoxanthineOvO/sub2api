@@ -3,7 +3,8 @@
     <!-- Balance value row: static display (snapshot or probe result) -->
     <div class="flex flex-wrap items-center gap-1.5">
       <span
-        :class="['text-[10px] font-medium', platformTextClass(account.platform)]"
+        data-test="cn-provider-balance-value"
+        :class="['text-[10px] font-medium leading-4', platformTextClass(account.platform)]"
         :title="t('admin.accounts.cnProviders.balanceProbeTooltip')"
       >
         {{ balanceLabel }}
@@ -18,13 +19,15 @@
       </span>
     </div>
 
-    <!-- Explicit refresh action (aligned with OpenAI "Query" / Grok "Probe" buttons):
-         the old chip doubled as data display + hidden click target, which users
-         could not discover. The verb label makes the affordance explicit. -->
+    <!-- Explicit refresh action (aligned with the OpenAI "Query" / Grok "Probe"
+         buttons): the old chip doubled as the data display and a hidden click
+         target, which users could not discover. The verb label makes the
+         affordance explicit. -->
     <div class="flex flex-wrap items-center gap-1.5">
       <button
         type="button"
-        class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+        data-test="cn-provider-balance-probe"
+        class="inline-flex items-center gap-0.5 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium leading-4 text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
         :disabled="loading"
         :title="t('admin.accounts.cnProviders.balanceProbeTooltip')"
         @click="handleProbe"
