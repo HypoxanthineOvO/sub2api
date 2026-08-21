@@ -20,3 +20,5 @@ updated: 2026-08-21T09:05:00Z
 - commit `08da1720e` 已推送 origin：加入 app-only slot unit、固定 release 的 slot symlink、Nginx upstream active link、切换/排空脚本以及最小验证契约。仓库验证通过；生产 root 安装与流量切换留待下一步。
 - 生产 green canary 已在 19822 启动并核验：release `40fb634ad`、`NRestarts=0`、health 正常、journal 无 fatal/panic/error。第一次命令因启动后立即 curl 产生约 1 秒竞态并在改 Nginx 前安全退出；commit `e10b7bbaf` 已将 runbook 改为有界 readiness 重试。下一步仅安装 Nginx upstream 结构，active 仍保持 blue/19821。
 - Nginx upstream 安装脚本 `6340913d8` 执行成功；root `nginx -t` 与 reload 通过，active=blue，旧/新 App direct health 和 Nginx HTTPS health 均通过。下一步进入第一次 green canary 切流。
+- green canary 切流后 GLM 测试与 CN 额度查询均由用户确认通过，生产真实 `/responses` 与用户 API 持续返回 200。随后切回 blue，将 green 晋升为 active worker 模式，再最终切到 green；19821 排空后停止 legacy App。
+- 最终验收：active upstream=green，只有 19822 监听；green active/enabled、零重启，production target active/enabled 并依赖 green；旧 App inactive/disabled。PG、Redis、allocator、Selected Node 保持原 PID/启动时间。切流后未发现 5xx/panic/fatal，并观测到 181 个 HTTP 200；binary hash 与构建产物一致。

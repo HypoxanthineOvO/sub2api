@@ -3,9 +3,9 @@ kind: cycle-progress
 cycle: native-blue-green-release
 plan: PLAN.md
 status: active
-current: M8
-next: M8
-updated: 2026-08-21T10:00:00Z
+current: M10
+next: M10
+updated: 2026-08-21T10:40:00Z
 ---
 
 # 进度
@@ -19,8 +19,8 @@ updated: 2026-08-21T10:00:00Z
 | `M5` | 推送 `vsp/main` | `completed` | origin `refs/heads/vsp/main` 已指向 `08da1720e`，其中包含目标代码和 blue-green 实现 | 无 |
 | `M6` | app-only canary unit | `completed` | green 固定到 `40fb634ad`，19822 health 正常，`NRestarts=0`，canary worker 模式生效，binary hash 与构建产物一致 | 无 |
 | `M7` | Nginx upstream 切换 | `completed` | commit `6340913d8` 安装成功；`nginx -t`/reload 通过，active symlink 指向 blue，HTTPS health 正常 | 无 |
-| `M8` | blue-green 发布 | `in_progress` | green `40fb634ad` 已健康运行；尚未切流或晋升 active worker 模式 | 先切 green 做短时 canary，再切回 blue，晋升 green active 后正式切换 |
-| `M9` | 上线验证 | `pending` | 历史基线已验证 native 数据面；40fb 尚未验证在线 | 发布后确认 40fb release、GLM/CN UX、health 和 journal |
+| `M8` | blue-green 发布 | `completed` | green `40fb634ad` 已完成 canary、切回、active worker 晋升和最终切流；19821 排空后旧 App 停止 | 无 |
+| `M9` | 上线验证 | `completed` | active=green/19822；GLM 测试和 CN 查询通过；HTTPS health 正常；green 零重启且切流后无 5xx/panic/fatal | 无 |
 | `M10` | 上游跟进与同步风险 | `pending` | fork 据先前记录落后 upstream 约 110 commits，需重新 fetch 核验 | 查询 PR 状态和分支差异 |
 
 ## 当前阻塞与风险
@@ -33,3 +33,4 @@ updated: 2026-08-21T10:00:00Z
 - 仓库级验证已通过：`deploy/native/verify.sh`、autonomous worker 单测、Shell 语法、临时 Nginx upstream 语法；生产安装和真实切流尚未执行。
 - 首次 canary 命令的即时 health curl 早于 App 开始监听约 1 秒，fail-fast 在 Nginx 修改前退出；green 随后正常启动。runbook 已加入有界 readiness 重试（commit `e10b7bbaf`）。
 - Nginx 安装后现场核验通过：active=blue，两个 App 和 HTTPS health 均正常，green 无重启或错误日志。
+- 最终状态：green active/enabled，legacy App inactive/disabled，production target active/enabled 且依赖 green；PG/Redis/allocator/Selected Node 未重启。旧 `f1fdd39e3` 与 blue upstream 仍保留作显式回滚。
