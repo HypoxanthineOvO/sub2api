@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode"
 	"sync/atomic"
 	"time"
 
@@ -1171,6 +1172,54 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 	return models
 }
 
+// claudeDisplayNameByID 缓存官方 Claude 模型目录的展示名，供模型列表出口复用。
+var claudeDisplayNameByID = func() map[string]string {
+	m := make(map[string]string, len(claude.DefaultModels))
+	for _, model := range claude.DefaultModels {
+		m[model.ID] = model.DisplayName
+	}
+	return m
+}()
+
+// modelDisplayNameToken 规范常见模型前缀的大小写。
+var modelDisplayNameToken = map[string]string{
+	"glm": "GLM", "gpt": "GPT", "kimi": "Kimi", "deepseek": "DeepSeek",
+	"codex": "Codex", "k3": "K3", "claude": "Claude", "grok": "Grok",
+	"gemini": "Gemini", "qwen": "Qwen", "minimax": "MiniMax", "mimo": "MiMo",
+}
+
+// displayNameForModelID 返回模型展示名：官方 Claude 目录优先（Claude Code 的
+// /model 菜单直接渲染 display_name），其余模型按 token 规范化（glm-5.3 → GLM 5.3），
+// 未知 token 原样保留，避免硬编码全量目录。
+func displayNameForModelID(modelID string) string {
+	if name, ok := claudeDisplayNameByID[modelID]; ok && name != "" {
+		return name
+	}
+	tokens := strings.Split(modelID, "-")
+	for i, token := range tokens {
+		if mapped, ok := modelDisplayNameToken[token]; ok {
+			tokens[i] = mapped
+			continue
+		}
+		tokens[i] = capitalizeModelToken(token)
+	}
+	return strings.Join(tokens, " ")
+}
+
+// capitalizeModelToken 将纯字母 token 首字母大写（for → For），v4 这类字母开头
+// token 同样处理；数字开头（256k、5.3）保持原样。
+func capitalizeModelToken(token string) string {
+	if token == "" {
+		return token
+	}
+	r := []rune(token)
+	if !unicode.IsLetter(r[0]) {
+		return token
+	}
+	r[0] = unicode.ToUpper(r[0])
+	return string(r)
+}
+
 func writeModelsList(c *gin.Context, platform string, modelIDs []string) {
 	if platform == service.PlatformGrok {
 		writeGrokModelsList(c, modelIDs)
@@ -1181,7 +1230,7 @@ func writeModelsList(c *gin.Context, platform string, modelIDs []string) {
 		models = append(models, claude.Model{
 			ID:          modelID,
 			Type:        "model",
-			DisplayName: modelID,
+			DisplayName: displayNameForModelID(modelID),
 			CreatedAt:   "2024-01-01T00:00:00Z",
 		})
 	}
@@ -1276,7 +1325,7 @@ func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
 			Created:     1704067200,
 			OwnedBy:     "openai",
 			Type:        "model",
-			DisplayName: modelID,
+			DisplayName: displayNameForModelID(modelID),
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{
