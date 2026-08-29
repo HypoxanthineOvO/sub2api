@@ -2505,9 +2505,10 @@ func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedu
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue schedulable change failed: account=%d err=%v", id, err)
 	}
-	if !schedulable {
-		r.syncSchedulerAccountSnapshot(ctx, id)
-	}
+	// Both transitions must update the single-account cache immediately. Waiting
+	// for the outbox on false -> true can leave a recovered account absent from
+	// group snapshots indefinitely when the asynchronous rebuild is delayed.
+	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 }
 
