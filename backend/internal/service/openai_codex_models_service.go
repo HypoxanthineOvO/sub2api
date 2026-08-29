@@ -227,9 +227,10 @@ func (c *codexModelsManifestCache) set(key string, manifest *CodexModelsManifest
 // FetchCodexModelsManifest fetches the live Codex models manifest from either
 // the ChatGPT backend for OAuth accounts or a custom upstream for API key accounts.
 //
-// After validating the stable top-level envelope, OAuth response bodies are
-// passed through verbatim. Custom API key manifests receive only the narrowly
-// scoped compatibility adjustments required by custom-provider Codex clients.
+// After validating the stable top-level envelope, known long-context models
+// are allowed to opt into their full window. Custom API key manifests also
+// receive the narrowly scoped compatibility adjustments required by
+// custom-provider Codex clients.
 func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, account *Account, clientVersion, ifNoneMatch string) (*CodexModelsManifest, error) {
 	if account == nil {
 		return nil, infraerrors.New(http.StatusInternalServerError, "OPENAI_CODEX_MODELS_ACCOUNT_REQUIRED", "account is required")
@@ -313,7 +314,7 @@ func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, acc
 	// Version 头优先与 client_version 查询参数同源：客户端自报版本合法且不低于上游
 	// 门槛时原样使用；否则回退规范版本，避免陈旧 version 触发上游 404（issue #3901）。
 	// client_version 查询参数本身始终按客户端原值透传（内容协商语义，契约见
-	// TestFetchCodexModelsManifestPassthrough）。
+	// TestFetchCodexModelsManifestOpensLongContextCeiling）。
 	headerVersion := NormalizeCodexClientVersion(clientVersion)
 	if headerVersion == "" || CompareVersions(headerVersion, codexUpstreamMinVersion) < 0 {
 		headerVersion = identity.version
@@ -338,9 +339,14 @@ func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, acc
 	if useAPIKeyUpstream {
 		return s.fetchCachedAPIKeyCodexModelsManifest(ctx, request, ifNoneMatch)
 	}
-	manifest, fetchErr := s.fetchCodexModelsManifestUpstream(ctx, request, ifNoneMatch)
+	// The response body is normalized below, so an ETag issued for the upstream
+	// representation cannot safely validate the client-facing representation.
+	manifest, fetchErr := s.fetchCodexModelsManifestUpstream(ctx, request, "")
 	if !credAccount.IsOpenAIAgentIdentity() || !isAgentIdentityTaskInvalidCodexModelsError(fetchErr) {
 		s.handleCodexModelsManifestAccountAuthError(ctx, account, credAccount, fetchErr)
+		if fetchErr == nil {
+			manifest = codexModelsManifestForClient(manifest, ifNoneMatch)
+		}
 		return manifest, fetchErr
 	}
 	expectedTaskID := strings.TrimSpace(credAccount.GetCredential("task_id"))
@@ -359,7 +365,11 @@ func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, acc
 		}
 	}
 	setOpenAIChatGPTAccountHeaders(request.headers, credAccount)
-	return s.fetchCodexModelsManifestUpstream(ctx, request, ifNoneMatch)
+	manifest, fetchErr = s.fetchCodexModelsManifestUpstream(ctx, request, "")
+	if fetchErr == nil {
+		manifest = codexModelsManifestForClient(manifest, ifNoneMatch)
+	}
+	return manifest, fetchErr
 }
 
 func isAgentIdentityTaskInvalidCodexModelsError(err error) bool {
@@ -557,13 +567,25 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 			}
 		}
 	}
+	body, err = adjustCodexModelsManifestMaxContextWindow(body)
+	if err != nil {
+		return nil, &codexModelsManifestUpstreamError{
+			err: infraerrors.Newf(
+				http.StatusBadGateway,
+				"OPENAI_CODEX_MODELS_UPSTREAM_INVALID_MANIFEST",
+				"codex models manifest context window could not be adjusted: %v",
+				err,
+			),
+			retryable: true,
+		}
+	}
 	etag := resp.Header.Get("ETag")
 	manifest := &CodexModelsManifest{Body: body, ETag: etag}
 	if request.useAPIKeyUpstream {
 		manifest.upstreamETag = etag
-		if !bytes.Equal(body, upstreamBody) {
-			manifest.ETag = codexModelsManifestBodyETag(body)
-		}
+	}
+	if !bytes.Equal(body, upstreamBody) {
+		manifest.ETag = codexModelsManifestBodyETag(body)
 	}
 	return manifest, nil
 }
@@ -574,9 +596,77 @@ func codexModelsManifestBodyETag(body []byte) string {
 }
 
 var apiKeyCodexModelsWithoutResponsesLite = map[string]struct{}{
+	"gpt-5.6":       {},
 	"gpt-5.6-sol":   {},
 	"gpt-5.6-terra": {},
 	"gpt-5.6-luna":  {},
+}
+
+const openAILongContextWindow = 1_050_000
+
+var openAILongContextCodexModels = map[string]struct{}{
+	"gpt-5.5":       {},
+	"gpt-5.6":       {},
+	"gpt-5.6-sol":   {},
+	"gpt-5.6-terra": {},
+	"gpt-5.6-luna":  {},
+}
+
+// adjustCodexModelsManifestMaxContextWindow raises only the opt-in ceiling.
+// The upstream context_window remains the conservative default; Codex clients
+// can select a larger window through model_context_window without being clamped
+// back to the legacy 272k catalog ceiling.
+func adjustCodexModelsManifestMaxContextWindow(body []byte) ([]byte, error) {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, fmt.Errorf("decode JSON object: %w", err)
+	}
+	var models []json.RawMessage
+	if err := json.Unmarshal(envelope["models"], &models); err != nil {
+		return nil, fmt.Errorf("decode top-level models array: %w", err)
+	}
+
+	changed := false
+	for i, rawModel := range models {
+		var model map[string]json.RawMessage
+		if err := json.Unmarshal(rawModel, &model); err != nil || model == nil {
+			continue
+		}
+		var slug string
+		if err := json.Unmarshal(model["slug"], &slug); err != nil {
+			continue
+		}
+		if _, targeted := openAILongContextCodexModels[slug]; !targeted {
+			continue
+		}
+		var currentMax int
+		if rawMax, ok := model["max_context_window"]; ok {
+			if err := json.Unmarshal(rawMax, &currentMax); err == nil && currentMax >= openAILongContextWindow {
+				continue
+			}
+		}
+		model["max_context_window"] = json.RawMessage("1050000")
+		adjusted, err := json.Marshal(model)
+		if err != nil {
+			return nil, fmt.Errorf("encode model %q: %w", slug, err)
+		}
+		models[i] = adjusted
+		changed = true
+	}
+	if !changed {
+		return body, nil
+	}
+
+	adjustedModels, err := json.Marshal(models)
+	if err != nil {
+		return nil, fmt.Errorf("encode top-level models array: %w", err)
+	}
+	envelope["models"] = adjustedModels
+	adjusted, err := json.Marshal(envelope)
+	if err != nil {
+		return nil, fmt.Errorf("encode JSON object: %w", err)
+	}
+	return adjusted, nil
 }
 
 // adjustAPIKeyCodexModelsManifest prevents Codex from selecting Responses
