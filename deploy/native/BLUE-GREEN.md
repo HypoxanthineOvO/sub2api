@@ -82,7 +82,10 @@ host reboot start the same release that Nginx serves.
 
 ## Routine releases
 
-After code review and repository validation, build as the regular user:
+After code review and repository validation, build as the regular user. The
+build records the current commit, the exact `backend/frontend` content tree,
+and the binary checksum, so reviewed uncommitted source changes can also be
+deployed without weakening artifact validation:
 
 ```bash
 bash deploy/native/build.sh
@@ -95,8 +98,30 @@ command:
 sudo bash /home/heyx/Workspace/VSP/VSP-Sub2API/deploy/native/deploy-app-release.sh
 ```
 
-The script requires a clean tracked worktree and a build matching `HEAD`. It
-detects the inactive slot, stages it with autonomous workers disabled, performs
+The script requires a build matching both `HEAD` and the current source content.
+It detects the inactive slot, stages it with autonomous workers disabled, performs
 a short canary switch, returns traffic to promote workers, switches back to the
 new slot, drains and stops the old slot, and updates boot enablement. It never
 restarts PostgreSQL, Redis, allocator, Selected Node, or proxy slots.
+
+## Agent deployment command
+
+Install the constrained root-owned deployment command once after reviewing the
+installer and privileged scripts:
+
+```bash
+sudo bash deploy/native/install-agent-deployer.sh
+```
+
+After that one-time setup, an agent can build and deploy an App-only release:
+
+```bash
+bash deploy/native/build.sh
+sudo -n /usr/local/sbin/vsp-sub2api-deploy
+```
+
+The sudoers rule permits only the no-argument wrapper. The wrapper and its
+privileged dependencies are root-owned copies under `/usr/local`; editable
+repository scripts are never executed with passwordless root privileges. Run
+the installer again only when intentionally updating the privileged deployment
+logic.
