@@ -98,6 +98,11 @@ const zhipuModels = [
 
 // 阿里 通义千问
 const qwenModels = [
+  'qwen3.8-max', 'qwen3.8-flash', 'qwen3.7-max', 'qwen3.7-plus', 'qwen3.6-plus', 'qwen3.6-flash',
+  'qwen3.5-plus', 'qwen3.5-flash', 'qwen3-max', 'qwen3-max-2026-01-23', 'qwen3-max-preview',
+  'qwen3-coder-plus', 'qwen3-coder-flash', 'qwen3-coder-next', 'qwen3-coder-480b-a35b-instruct',
+  'qwen3-coder-30b-a3b-instruct', 'qwen3-235b-a22b-instruct-2507', 'qwen3-vl-plus', 'qwen3-vl-flash',
+  'qwen3.5-omni-plus', 'qwen3.7-flash', 'qwen-flash', 'qwq-plus',
   'qwen-turbo', 'qwen-plus', 'qwen-max', 'qwen-max-longcontext', 'qwen-long',
   'qwen2-72b-instruct', 'qwen2-57b-a14b-instruct', 'qwen2-7b-instruct',
   'qwen2.5-72b-instruct', 'qwen2.5-32b-instruct', 'qwen2.5-14b-instruct',
@@ -198,9 +203,15 @@ const doubaoModels = [
 
 // MiniMax
 const minimaxModels = [
-  'abab6.5-chat', 'abab6.5s-chat', 'abab6.5s-chat-pro',
-  'abab6-chat',
-  'abab5.5-chat', 'abab5.5s-chat'
+  'MiniMax-M3',
+  'MiniMax-M2.7', 'MiniMax-M2.7-highspeed',
+  'MiniMax-M2.5', 'MiniMax-M2.5-highspeed',
+  'MiniMax-M2.1', 'MiniMax-M2.1-highspeed', 'MiniMax-M2'
+]
+
+// Xiaomi MiMo
+const mimoModels = [
+  'mimo-v2.5', 'mimo-v2.5-pro'
 ]
 
 // 百度 文心
@@ -221,6 +232,8 @@ const sparkModels = [
 
 // 腾讯 混元
 const hunyuanModels = [
+  'hy4-preview', 'hy3', 'hy3-preview', 'hy-mt2-pro', 'hy-mt2-plus', 'hy-mt2-lite',
+  'hunyuan-role-latest', 'hy-role',
   'hunyuan-lite', 'hunyuan-standard', 'hunyuan-standard-256k',
   'hunyuan-pro', 'hunyuan-turbo', 'hunyuan-large',
   'hunyuan-vision', 'hunyuan-code'
@@ -249,6 +262,7 @@ const allModelsList: string[] = [
   ...moonshotModels,
   ...doubaoModels,
   ...minimaxModels,
+  ...mimoModels,
   ...baiduModels,
   ...sparkModels,
   ...hunyuanModels,
@@ -434,6 +448,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'kimi': return moonshotModels
     case 'doubao': return doubaoModels
     case 'minimax': return minimaxModels
+    case 'mimo': return mimoModels
     case 'baidu': return baiduModels
     case 'spark': return sparkModels
     case 'hunyuan': return hunyuanModels

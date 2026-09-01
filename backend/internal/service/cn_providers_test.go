@@ -398,10 +398,44 @@ func TestNormalizeOpenAICompatiblePlatform_SchedulerExactMatch(t *testing.T) {
 	require.Equal(t, PlatformKimi, NormalizeOpenAICompatiblePlatform(PlatformKimi))
 	require.Equal(t, PlatformZhipu, NormalizeOpenAICompatiblePlatform(PlatformZhipu))
 	require.Equal(t, PlatformDeepseek, NormalizeOpenAICompatiblePlatform(PlatformDeepseek))
+	require.Equal(t, PlatformMinimax, NormalizeOpenAICompatiblePlatform(PlatformMinimax))
+	require.Equal(t, PlatformMiMo, NormalizeOpenAICompatiblePlatform(PlatformMiMo))
+	require.Equal(t, PlatformHunyuan, NormalizeOpenAICompatiblePlatform(PlatformHunyuan))
+	require.Equal(t, PlatformQwen, NormalizeOpenAICompatiblePlatform(PlatformQwen))
 	// 其他平台（含空、anthropic、未知）一律归一为 openai。
 	require.Equal(t, PlatformOpenAI, NormalizeOpenAICompatiblePlatform(""))
 	require.Equal(t, PlatformOpenAI, NormalizeOpenAICompatiblePlatform(PlatformAnthropic))
 	require.Equal(t, PlatformOpenAI, NormalizeOpenAICompatiblePlatform("something-else"))
+}
+
+func TestHunyuanAndQwenDefaultsAndProtocol(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		platform string
+		baseURL  string
+		model    string
+	}{
+		{platform: PlatformHunyuan, baseURL: DefaultHunyuanBaseURL, model: "hy3"},
+		{platform: PlatformQwen, baseURL: DefaultQwenBaseURL, model: "qwen3.7-plus"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.platform, func(t *testing.T) {
+			account := &Account{
+				Platform: tt.platform,
+				Type:     AccountTypeAPIKey,
+				Credentials: map[string]any{
+					"api_key":      "test-key",
+					"api_protocol": APIProtocolAdaptive,
+				},
+			}
+			require.True(t, account.IsCNProvider())
+			require.True(t, account.IsOpenAICompatible())
+			require.Equal(t, tt.baseURL, account.GetOpenAIBaseURL())
+			require.Equal(t, APIProtocolChatCompletions, account.GetAPIProtocol())
+			require.False(t, account.SupportsNativeResponses())
+			require.Equal(t, tt.model, cnProviderTestModel(account, ""))
+		})
+	}
 }
 
 // TestGetOpenAIProtocolAPIKey_CNProviders 验证 OpenAI 协议族密钥读取覆盖国产供应商，
@@ -451,6 +485,10 @@ func TestBuildUpstreamModelsRequest_CNProviders(t *testing.T) {
 		{"zhipu default", PlatformZhipu, "", "https://open.bigmodel.cn/api/paas/v4/models"},
 		{"zhipu coding", PlatformZhipu, AccountModeCoding, "https://open.bigmodel.cn/api/coding/paas/v4/models"},
 		{"deepseek", PlatformDeepseek, "", "https://api.deepseek.com/v1/models"},
+		{"minimax payg", PlatformMinimax, AccountModePayG, "https://api.minimaxi.com/v1/models"},
+		{"minimax token plan", PlatformMinimax, AccountModeCoding, "https://api.minimaxi.com/v1/models"},
+		{"mimo payg", PlatformMiMo, AccountModePayG, "https://api.xiaomimimo.com/v1/models"},
+		{"mimo token plan", PlatformMiMo, AccountModeCoding, "https://token-plan-cn.xiaomimimo.com/v1/models"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -486,6 +524,13 @@ func TestGetAPIProtocol(t *testing.T) {
 	require.Equal(t, APIProtocolAnthropic, mk(PlatformKimi, APIProtocolAnthropic).GetAPIProtocol())
 	require.Equal(t, APIProtocolAnthropic, mk(PlatformDeepseek, APIProtocolAnthropic).GetAPIProtocol())
 	require.Equal(t, APIProtocolResponses, mk(PlatformDeepseek, APIProtocolResponses).GetAPIProtocol())
+	require.Equal(t, APIProtocolResponses, mk(PlatformMinimax, APIProtocolResponses).GetAPIProtocol())
+	require.Equal(t, APIProtocolResponses, mk(PlatformMiMo, APIProtocolResponses).GetAPIProtocol())
+	mimoTokenPlan := mk(PlatformMiMo, APIProtocolResponses)
+	mimoTokenPlan.Credentials["account_mode"] = AccountModeCoding
+	require.Equal(t, APIProtocolResponses, mimoTokenPlan.GetAPIProtocol(), "MiMo Token Plan supports Responses")
+	require.True(t, mimoTokenPlan.SupportsNativeResponses())
+	require.True(t, mk(PlatformMiMo, APIProtocolResponses).SupportsNativeResponses())
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformKimi, APIProtocolAdaptive).GetAPIProtocol())
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformZhipu, APIProtocolAdaptive).GetAPIProtocol())
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformDeepseek, APIProtocolAdaptive).GetAPIProtocol())
@@ -511,6 +556,10 @@ func TestAdaptiveProtocolBaseURLs(t *testing.T) {
 		{"zhipu payg", PlatformZhipu, AccountModePayG, DefaultZhipuPayGBaseURL, DefaultZhipuAnthropicBaseURL, DefaultZhipuPayGBaseURL},
 		{"zhipu coding", PlatformZhipu, AccountModeCoding, DefaultZhipuCodingBaseURL, DefaultZhipuAnthropicBaseURL, DefaultZhipuCodingBaseURL},
 		{"deepseek", PlatformDeepseek, AccountModePayG, DefaultDeepseekBaseURL, DefaultDeepseekAnthropicBaseURL, DefaultDeepseekBaseURL},
+		{"minimax payg", PlatformMinimax, AccountModePayG, DefaultMinimaxBaseURL, DefaultMinimaxAnthropicBaseURL, DefaultMinimaxBaseURL},
+		{"minimax token plan", PlatformMinimax, AccountModeCoding, DefaultMinimaxBaseURL, DefaultMinimaxAnthropicBaseURL, DefaultMinimaxBaseURL},
+		{"mimo payg", PlatformMiMo, AccountModePayG, DefaultMiMoPayGBaseURL, DefaultMiMoPayGAnthropicBaseURL, DefaultMiMoPayGBaseURL},
+		{"mimo token plan", PlatformMiMo, AccountModeCoding, DefaultMiMoCodingBaseURL, DefaultMiMoCodingAnthropicBaseURL, DefaultMiMoCodingBaseURL},
 	}
 
 	for _, tc := range cases {
@@ -567,6 +616,14 @@ func TestAnthropicProtocolBaseURL(t *testing.T) {
 	require.Equal(t, "https://api.deepseek.com/anthropic", (&Account{
 		Platform: PlatformDeepseek, Type: AccountTypeAPIKey,
 		Credentials: map[string]any{"api_protocol": APIProtocolAnthropic},
+	}).GetAnthropicProtocolBaseURL())
+	require.Equal(t, DefaultMinimaxAnthropicBaseURL, (&Account{
+		Platform: PlatformMinimax, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_protocol": APIProtocolAnthropic, "account_mode": AccountModeCoding},
+	}).GetAnthropicProtocolBaseURL())
+	require.Equal(t, DefaultMiMoCodingAnthropicBaseURL, (&Account{
+		Platform: PlatformMiMo, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_protocol": APIProtocolAnthropic, "account_mode": AccountModeCoding},
 	}).GetAnthropicProtocolBaseURL())
 
 	// 凭证 base_url 覆盖默认值
@@ -639,6 +696,8 @@ func TestBuildOpenAIResponsesURLForPlatform(t *testing.T) {
 	require.Equal(t, "https://relay.example.com/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformDeepseek, "https://relay.example.com/v1"))
 	require.Equal(t, "https://api.openai.com/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformOpenAI, "https://api.openai.com"))
 	require.Equal(t, "https://open.bigmodel.cn/api/paas/v4/responses", buildOpenAIResponsesURLForPlatform(PlatformZhipu, "https://open.bigmodel.cn/api/paas/v4"))
+	require.Equal(t, "https://api.minimaxi.com/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformMinimax, DefaultMinimaxBaseURL))
+	require.Equal(t, "https://api.xiaomimimo.com/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformMiMo, DefaultMiMoPayGBaseURL))
 }
 
 // TestNormalizeDeepSeekResponsesRequestBody 无状态适配：强制 store=false、
@@ -686,4 +745,11 @@ func TestGetAnthropicAPIKeyAuthScheme_CNProvider(t *testing.T) {
 
 	zhipu.Extra = map[string]any{"anthropic_apikey_auth_scheme": "authorization_bearer"}
 	require.Equal(t, AnthropicAPIKeyAuthSchemeAuthorizationBearer, zhipu.GetAnthropicAPIKeyAuthScheme())
+
+	for _, platform := range []string{PlatformMinimax, PlatformMiMo} {
+		account := &Account{Platform: platform, Type: AccountTypeAPIKey}
+		require.Equal(t, AnthropicAPIKeyAuthSchemeAuthorizationBearer, account.GetAnthropicAPIKeyAuthScheme())
+		account.Extra = map[string]any{"anthropic_apikey_auth_scheme": AnthropicAPIKeyAuthSchemeXAPIKey}
+		require.Equal(t, AnthropicAPIKeyAuthSchemeXAPIKey, account.GetAnthropicAPIKeyAuthScheme())
+	}
 }

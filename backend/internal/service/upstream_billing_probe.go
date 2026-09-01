@@ -986,7 +986,7 @@ func IsUpstreamBillingProbeIdentity(platform, accountType string) bool {
 	}
 	switch platform {
 	case PlatformOpenAI, PlatformAnthropic, PlatformGemini, PlatformAntigravity, PlatformGrok,
-		PlatformKimi, PlatformZhipu, PlatformDeepseek:
+		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMinimax, PlatformMiMo, PlatformHunyuan, PlatformQwen:
 		return true
 	default:
 		return false
@@ -1024,6 +1024,10 @@ var upstreamBillingProbeOfficialAPIDomains = []string{
 	"kimi.com",
 	"bigmodel.cn",
 	"deepseek.com",
+	"minimaxi.com",
+	"xiaomimimo.com",
+	"cloud.tencent.com",
+	"aliyuncs.com",
 }
 
 func upstreamBillingProbeTargetIsOfficialAPI(baseURL string) bool {

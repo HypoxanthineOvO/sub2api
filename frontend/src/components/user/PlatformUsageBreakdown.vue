@@ -56,6 +56,23 @@ const props = defineProps<{
 
 const { t } = useI18n()
 
+const PLATFORM_LABELS: Record<string, string> = {
+  anthropic: 'Claude',
+  openai: 'OpenAI',
+  gemini: 'Gemini',
+  antigravity: 'Antigravity',
+  grok: 'Grok',
+  kimi: 'Kimi',
+  zhipu: 'Zhipu GLM',
+  deepseek: 'DeepSeek',
+  minimax: 'MiniMax',
+  mimo: 'MiMo'
+}
+
+function platformLabel(platform: string): string {
+  return PLATFORM_LABELS[platform] ?? platform
+}
+
 // 与 UserDashboardStats 保持一致：把"总值 - 各平台之和"的差作为"其他"行展示，
 // 避免 tooltip 内各平台费用加总与列首总值对不上。
 const OTHER_THRESHOLD = 0.0001
@@ -90,14 +107,4 @@ const sortedBreakdown = computed<BreakdownRow[]>(() => {
 
 const hasBreakdown = computed(() => sortedBreakdown.value.length > 0)
 
-const PLATFORM_LABELS: Record<string, string> = {
-  anthropic: 'Claude',
-  openai: 'OpenAI',
-  gemini: 'Gemini',
-  antigravity: 'Antigravity'
-}
-
-function platformLabel(platform: string): string {
-  return PLATFORM_LABELS[platform] ?? platform
-}
 </script>

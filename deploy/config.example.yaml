@@ -147,6 +147,15 @@ security:
       - "api.moonshot.cn"
       - "open.bigmodel.cn"
       - "api.minimaxi.com"
+      - "www.minimaxi.com"
+      - "api.xiaomimimo.com"
+      - "token-plan-cn.xiaomimimo.com"
+      - "token-plan-sgp.xiaomimimo.com"
+      - "token-plan-ams.xiaomimimo.com"
+      - "api.lkeap.cloud.tencent.com"
+      - "tokenhub.tencentmaas.com"
+      - "tokenhub-intl.tencentmaas.com"
+      - "dashscope.aliyuncs.com"
       - "generativelanguage.googleapis.com"
       - "cloudcode-pa.googleapis.com"
       - "*.openai.azure.com"
@@ -1054,6 +1063,8 @@ plugins:
 # 定价数据源（可选）
 # =============================================================================
 pricing:
+  # Operational FX rate used to convert official CNY model rate cards into the USD billing ledger.
+  cny_per_usd: 7.15
   # URL to fetch model pricing data (default: pinned model-price-repo commit)
   # 获取模型定价数据的 URL（默认：固定 commit 的 model-price-repo）
   remote_url: "https://raw.githubusercontent.com/Wei-Shaw/model-price-repo/refs/heads/main//model_prices_and_context_window.json"

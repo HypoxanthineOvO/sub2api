@@ -92,27 +92,37 @@ type BillingCache interface {
 
 // ModelPricing 模型价格配置（per-token价格，与LiteLLM格式一致）
 type ModelPricing struct {
-	InputPricePerToken                 float64  // 每token输入价格 (USD)
-	InputPricePerTokenPriority         float64  // priority service tier 下每token输入价格 (USD)
-	ImageInputPricePerToken            float64  // 图片输入 token 价格 (USD)，用于多模态 embedding 等图文不同价场景；为 0 时回退到 InputPricePerToken
-	OutputPricePerToken                float64  // 每token输出价格 (USD)
-	OutputPricePerTokenPriority        float64  // priority service tier 下每token输出价格 (USD)
-	CacheCreationPricePerToken         float64  // 缓存创建每token价格 (USD)
-	CacheCreationPricePerTokenPriority float64  // priority service tier 下缓存创建每token价格 (USD)
-	CacheCreationPriceExplicit         bool     // 是否由渠道/区间定价显式设定（为 true 时即使 == 0 也不回退）
-	CacheReadPricePerToken             float64  // 缓存读取每token价格 (USD)
-	CacheReadPricePerTokenPriority     float64  // priority service tier 下缓存读取每token价格 (USD)
-	FastMultiplier                     *float64 // 渠道显式 Fast/priority 倍率；nil 时沿用模型目录行为
-	FlexMultiplier                     *float64 // 渠道显式 Flex 倍率；nil 时沿用默认行为
-	CacheCreation5mPrice               float64  // 5分钟缓存创建每token价格 (USD)
-	CacheCreation1hPrice               float64  // 1小时缓存创建每token价格 (USD)
-	SupportsCacheBreakdown             bool     // 是否支持详细的缓存分类
-	LongContextInputThreshold          int      // 超过阈值后按整次会话提升输入价格
-	LongContextThresholdInclusive      bool     // 达到阈值即应用（xAI）；默认保持严格大于以兼容既有模型
-	LongContextInputMultiplier         float64  // 长上下文整次会话输入倍率
-	LongContextOutputMultiplier        float64  // 长上下文整次会话输出倍率
-	ImageOutputPricePerToken           float64  // 图片输出 token 价格 (USD)
-	ImageOutputPriceExplicit           bool     // 是否由渠道定价显式设定（为 true 时即使 == 0 也不回退）
+	InputPricePerToken                 float64                   // 每token输入价格 (USD)
+	InputPricePerTokenPriority         float64                   // priority service tier 下每token输入价格 (USD)
+	ImageInputPricePerToken            float64                   // 图片输入 token 价格 (USD)，用于多模态 embedding 等图文不同价场景；为 0 时回退到 InputPricePerToken
+	OutputPricePerToken                float64                   // 每token输出价格 (USD)
+	OutputPricePerTokenPriority        float64                   // priority service tier 下每token输出价格 (USD)
+	CacheCreationPricePerToken         float64                   // 缓存创建每token价格 (USD)
+	CacheCreationPricePerTokenPriority float64                   // priority service tier 下缓存创建每token价格 (USD)
+	CacheCreationPriceExplicit         bool                      // 是否由渠道/区间定价显式设定（为 true 时即使 == 0 也不回退）
+	CacheReadPricePerToken             float64                   // 缓存读取每token价格 (USD)
+	CacheReadPricePerTokenPriority     float64                   // priority service tier 下缓存读取每token价格 (USD)
+	FastMultiplier                     *float64                  // 渠道显式 Fast/priority 倍率；nil 时沿用模型目录行为
+	FlexMultiplier                     *float64                  // 渠道显式 Flex 倍率；nil 时沿用默认行为
+	CacheCreation5mPrice               float64                   // 5分钟缓存创建每token价格 (USD)
+	CacheCreation1hPrice               float64                   // 1小时缓存创建每token价格 (USD)
+	SupportsCacheBreakdown             bool                      // 是否支持详细的缓存分类
+	LongContextInputThreshold          int                       // 超过阈值后按整次会话提升输入价格
+	LongContextThresholdInclusive      bool                      // 达到阈值即应用（xAI）；默认保持严格大于以兼容既有模型
+	LongContextInputMultiplier         float64                   // 长上下文整次会话输入倍率
+	LongContextOutputMultiplier        float64                   // 长上下文整次会话输出倍率
+	ImageOutputPricePerToken           float64                   // 图片输出 token 价格 (USD)
+	ImageOutputPriceExplicit           bool                      // 是否由渠道定价显式设定（为 true 时即使 == 0 也不回退）
+	ContextTiers                       []ModelPricingContextTier // 官方按单次输入 token 数分档的精确定价
+}
+
+// ModelPricingContextTier is an inclusive upper-bound pricing tier. A nil
+// MaxInputTokens is the final unbounded tier.
+type ModelPricingContextTier struct {
+	MaxInputTokens         *int
+	InputPricePerToken     float64
+	OutputPricePerToken    float64
+	CacheReadPricePerToken float64
 }
 
 const (
@@ -259,6 +269,62 @@ func NewBillingService(cfg *config.Config, pricingService *PricingService) *Bill
 // initFallbackPricing 初始化硬编码回退价格（当动态价格不可用时使用）
 // 价格单位：USD per token（与LiteLLM格式一致）
 func (s *BillingService) initFallbackPricing() {
+	// Official CN PAYG list prices are published in CNY per million tokens.
+	// The gateway ledger is USD; conversion uses the operator's existing
+	// subscription USD/CNY rate (7.15) and is documented here to avoid silently
+	// recording zero cost when the remote catalog is unavailable.
+	cnyPerUSD := 7.15
+	if s.cfg != nil && s.cfg.Pricing.CNYPerUSD > 0 {
+		cnyPerUSD = s.cfg.Pricing.CNYPerUSD
+	}
+	cnyToUSD := 1.0 / cnyPerUSD
+	s.fallbackPrices["hy4-preview"] = &ModelPricing{InputPricePerToken: cnyToUSD * 6e-6, OutputPricePerToken: cnyToUSD * 18e-6, CacheReadPricePerToken: cnyToUSD * 0.3e-6}
+	s.fallbackPrices["hy3"] = &ModelPricing{InputPricePerToken: cnyToUSD * 1e-6, OutputPricePerToken: cnyToUSD * 4e-6, CacheReadPricePerToken: cnyToUSD * 0.25e-6}
+	for _, model := range []string{"hy-mt2-pro", "hy-mt2-plus"} {
+		s.fallbackPrices[model] = &ModelPricing{InputPricePerToken: cnyToUSD * 0.5e-6, OutputPricePerToken: cnyToUSD * 2.0e-6}
+	}
+	s.fallbackPrices["hy-mt2-lite"] = &ModelPricing{InputPricePerToken: cnyToUSD * 0.3e-6, OutputPricePerToken: cnyToUSD * 1.2e-6}
+	for _, model := range []string{"hunyuan-role-latest", "hy-role"} {
+		s.fallbackPrices[model] = &ModelPricing{InputPricePerToken: cnyToUSD * 2.4e-6, OutputPricePerToken: cnyToUSD * 9.6e-6}
+	}
+	qwenPrices := map[string][2]float64{
+		"qwen3.8-max": {12, 36}, "qwen3.8-flash": {0.8, 2.7}, "qwen3.7-max": {12, 36}, "qwen3.7-plus": {2, 8},
+		"qwen3.6-plus": {2, 12}, "qwen3.5-plus": {0.8, 4.8},
+		"qwen3-max": {2.5, 10}, "qwen3-max-2026-01-23": {2.5, 10},
+		"qwen3-coder-plus": {4, 16}, "qwen3-coder-flash": {1, 4}, "qwen3-coder-next": {1, 4},
+		"qwen3-coder-480b-a35b-instruct": {6, 24}, "qwen3-coder-30b-a3b-instruct": {1.5, 6},
+		"qwen-max": {2.4, 9.6},
+	}
+	for model, prices := range qwenPrices {
+		s.fallbackPrices[model] = &ModelPricing{InputPricePerToken: cnyToUSD * prices[0] * 1e-6, OutputPricePerToken: cnyToUSD * prices[1] * 1e-6}
+	}
+	// Official Beijing PAYG context tiers (CNY/1M tokens): qwen3-max and
+	// qwen3.5-plus/qwen3.6-plus use the documented input-size brackets.
+	setQwenTiers := func(model string, tiers ...ModelPricingContextTier) {
+		if p := s.fallbackPrices[model]; p != nil {
+			p.ContextTiers = tiers
+		}
+	}
+	max32, max128 := 32000, 128000
+	setQwenTiers("qwen3-max", ModelPricingContextTier{MaxInputTokens: &max32, InputPricePerToken: cnyToUSD * 2.5e-6, OutputPricePerToken: cnyToUSD * 10e-6}, ModelPricingContextTier{MaxInputTokens: &max128, InputPricePerToken: cnyToUSD * 4e-6, OutputPricePerToken: cnyToUSD * 16e-6}, ModelPricingContextTier{InputPricePerToken: cnyToUSD * 7e-6, OutputPricePerToken: cnyToUSD * 28e-6})
+	setQwenTiers("qwen3-max-2026-01-23", ModelPricingContextTier{MaxInputTokens: &max32, InputPricePerToken: cnyToUSD * 2.5e-6, OutputPricePerToken: cnyToUSD * 10e-6}, ModelPricingContextTier{MaxInputTokens: &max128, InputPricePerToken: cnyToUSD * 4e-6, OutputPricePerToken: cnyToUSD * 16e-6}, ModelPricingContextTier{InputPricePerToken: cnyToUSD * 7e-6, OutputPricePerToken: cnyToUSD * 28e-6})
+	max256 := 256000
+	setQwenTiers("qwen3.7-plus", ModelPricingContextTier{MaxInputTokens: &max256, InputPricePerToken: cnyToUSD * 2e-6, OutputPricePerToken: cnyToUSD * 8e-6}, ModelPricingContextTier{InputPricePerToken: cnyToUSD * 6e-6, OutputPricePerToken: cnyToUSD * 24e-6})
+	setQwenTiers("qwen3.6-plus", ModelPricingContextTier{MaxInputTokens: &max256, InputPricePerToken: cnyToUSD * 2e-6, OutputPricePerToken: cnyToUSD * 12e-6}, ModelPricingContextTier{InputPricePerToken: cnyToUSD * 8e-6, OutputPricePerToken: cnyToUSD * 48e-6})
+	setQwenTiers("qwen3.5-plus", ModelPricingContextTier{MaxInputTokens: &max128, InputPricePerToken: cnyToUSD * 0.8e-6, OutputPricePerToken: cnyToUSD * 4.8e-6}, ModelPricingContextTier{MaxInputTokens: &max256, InputPricePerToken: cnyToUSD * 2e-6, OutputPricePerToken: cnyToUSD * 12e-6}, ModelPricingContextTier{InputPricePerToken: cnyToUSD * 4e-6, OutputPricePerToken: cnyToUSD * 24e-6})
+	max1M := 1000000
+	setQwenTiers("qwen3-coder-plus", ModelPricingContextTier{MaxInputTokens: &max32, InputPricePerToken: cnyToUSD * 4e-6, OutputPricePerToken: cnyToUSD * 16e-6}, ModelPricingContextTier{MaxInputTokens: &max128, InputPricePerToken: cnyToUSD * 6e-6, OutputPricePerToken: cnyToUSD * 24e-6}, ModelPricingContextTier{MaxInputTokens: &max256, InputPricePerToken: cnyToUSD * 10e-6, OutputPricePerToken: cnyToUSD * 40e-6}, ModelPricingContextTier{MaxInputTokens: &max1M, InputPricePerToken: cnyToUSD * 20e-6, OutputPricePerToken: cnyToUSD * 200e-6})
+	setQwenTiers("qwen3-coder-flash", ModelPricingContextTier{MaxInputTokens: &max32, InputPricePerToken: cnyToUSD * 1e-6, OutputPricePerToken: cnyToUSD * 4e-6}, ModelPricingContextTier{MaxInputTokens: &max128, InputPricePerToken: cnyToUSD * 1.5e-6, OutputPricePerToken: cnyToUSD * 6e-6}, ModelPricingContextTier{MaxInputTokens: &max256, InputPricePerToken: cnyToUSD * 2.5e-6, OutputPricePerToken: cnyToUSD * 10e-6}, ModelPricingContextTier{MaxInputTokens: &max1M, InputPricePerToken: cnyToUSD * 5e-6, OutputPricePerToken: cnyToUSD * 25e-6})
+	for alias, canonical := range map[string]string{
+		"qwen3.7-max-2026-06-08": "qwen3.7-max", "qwen3.7-max-2026-05-20": "qwen3.7-max",
+		"qwen3.7-max-preview": "qwen3.7-max", "qwen3.7-max-2026-05-17": "qwen3.7-max",
+		"qwen3.7-plus-2026-05-26": "qwen3.7-plus", "qwen3.6-plus-2026-04-02": "qwen3.6-plus",
+		"qwen3.5-plus-2026-02-15":     "qwen3.5-plus",
+		"qwen3-coder-plus-2025-09-23": "qwen3-coder-plus", "qwen3-coder-plus-2025-07-22": "qwen3-coder-plus",
+	} {
+		s.fallbackPrices[alias] = s.fallbackPrices[canonical]
+	}
+
 	// Claude 4.5 Opus
 	s.fallbackPrices["claude-opus-4.5"] = &ModelPricing{
 		InputPricePerToken:         5e-6,    // $5 per MTok
@@ -342,6 +408,67 @@ func (s *BillingService) initFallbackPricing() {
 		OutputPricePerToken:    7.5e-6,
 		CacheReadPricePerToken: 0.15e-6,
 		SupportsCacheBreakdown: false,
+	}
+
+	// MiniMax PAYG USD pricing. Source:
+	// https://platform.minimax.io/docs/guides/pricing-paygo
+	// M3 doubles input, output and cached-input cost above 512k input tokens;
+	// priority is 1.5x standard. The provider does not publish an M3 cache-write price.
+	s.fallbackPrices["minimax-m3"] = &ModelPricing{
+		InputPricePerToken:             0.30e-6,
+		InputPricePerTokenPriority:     0.45e-6,
+		OutputPricePerToken:            1.20e-6,
+		OutputPricePerTokenPriority:    1.80e-6,
+		CacheReadPricePerToken:         0.06e-6,
+		CacheReadPricePerTokenPriority: 0.09e-6,
+		LongContextInputThreshold:      512000,
+		LongContextInputMultiplier:     2,
+		LongContextOutputMultiplier:    2,
+	}
+	miniMaxM27 := &ModelPricing{
+		InputPricePerToken:         0.30e-6,
+		OutputPricePerToken:        1.20e-6,
+		CacheReadPricePerToken:     0.06e-6,
+		CacheCreationPricePerToken: 0.375e-6,
+	}
+	miniMaxM27HighSpeed := &ModelPricing{
+		InputPricePerToken:         0.60e-6,
+		OutputPricePerToken:        2.40e-6,
+		CacheReadPricePerToken:     0.06e-6,
+		CacheCreationPricePerToken: 0.375e-6,
+	}
+	miniMaxLegacy := &ModelPricing{
+		InputPricePerToken:         0.30e-6,
+		OutputPricePerToken:        1.20e-6,
+		CacheReadPricePerToken:     0.03e-6,
+		CacheCreationPricePerToken: 0.375e-6,
+	}
+	miniMaxLegacyHighSpeed := &ModelPricing{
+		InputPricePerToken:         0.60e-6,
+		OutputPricePerToken:        2.40e-6,
+		CacheReadPricePerToken:     0.03e-6,
+		CacheCreationPricePerToken: 0.375e-6,
+	}
+	s.fallbackPrices["minimax-m2.7"] = miniMaxM27
+	s.fallbackPrices["minimax-m2.7-highspeed"] = miniMaxM27HighSpeed
+	for _, model := range []string{"minimax-m2.5", "minimax-m2.1", "minimax-m2"} {
+		s.fallbackPrices[model] = miniMaxLegacy
+	}
+	for _, model := range []string{"minimax-m2.5-highspeed", "minimax-m2.1-highspeed"} {
+		s.fallbackPrices[model] = miniMaxLegacyHighSpeed
+	}
+
+	// Xiaomi MiMo international PAYG USD pricing. Source:
+	// https://platform.xiaomimimo.com/docs/zh-CN/price/pay-as-you-go
+	s.fallbackPrices["mimo-v2.5"] = &ModelPricing{
+		InputPricePerToken:     0.14e-6,
+		OutputPricePerToken:    0.28e-6,
+		CacheReadPricePerToken: 0.0028e-6,
+	}
+	s.fallbackPrices["mimo-v2.5-pro"] = &ModelPricing{
+		InputPricePerToken:     0.435e-6,
+		OutputPricePerToken:    0.87e-6,
+		CacheReadPricePerToken: 0.0036e-6,
 	}
 
 	// OpenAI GPT-5.4（业务指定价格）
@@ -624,47 +751,6 @@ func (s *BillingService) initFallbackPricing() {
 		SupportsCacheBreakdown: false,
 	}
 
-	// ---- MiniMax M 系列 ----
-	// Source: https://platform.minimax.io/docs/guides/pricing-paygo
-	// 注意：MiniMax M3 在 >512K context 时价格翻倍，本兜底采用 ≤512K 标准 tier（保守口径，对用户有利）。
-	// 如需支持长上下文 multiplier，可后续参考 GPT-5.4 模式扩展 LongContextXxx 字段。
-	s.fallbackPrices["minimax-m3"] = &ModelPricing{
-		InputPricePerToken:     0.60e-6, // $0.60 per MTok (≤512K standard tier, 含 50% 永久折扣前原价 $1.20)
-		OutputPricePerToken:    2.40e-6,
-		CacheReadPricePerToken: 0.12e-6,
-		SupportsCacheBreakdown: false,
-	}
-	s.fallbackPrices["minimax-m2.7"] = &ModelPricing{
-		InputPricePerToken:     0.30e-6, // $0.30 per MTok
-		OutputPricePerToken:    1.20e-6,
-		CacheReadPricePerToken: 0.06e-6,
-		SupportsCacheBreakdown: false,
-	}
-	s.fallbackPrices["minimax-m2.7-highspeed"] = &ModelPricing{
-		InputPricePerToken:     0.60e-6,
-		OutputPricePerToken:    2.40e-6,
-		CacheReadPricePerToken: 0.06e-6,
-		SupportsCacheBreakdown: false,
-	}
-	s.fallbackPrices["minimax-m2.5"] = &ModelPricing{
-		InputPricePerToken:     0.30e-6,
-		OutputPricePerToken:    1.20e-6,
-		CacheReadPricePerToken: 0.03e-6,
-		SupportsCacheBreakdown: false,
-	}
-	s.fallbackPrices["minimax-m2.1"] = &ModelPricing{
-		InputPricePerToken:     0.30e-6,
-		OutputPricePerToken:    1.20e-6,
-		CacheReadPricePerToken: 0.03e-6,
-		SupportsCacheBreakdown: false,
-	}
-	s.fallbackPrices["minimax-m2"] = &ModelPricing{
-		InputPricePerToken:     0.30e-6,
-		OutputPricePerToken:    1.20e-6,
-		CacheReadPricePerToken: 0.03e-6,
-		SupportsCacheBreakdown: false,
-	}
-
 	// ---- 火山方舟 豆包 Embedding（多模态向量化）----
 	// doubao-embedding-vision 图文向量化：上游 usage 回传 prompt_tokens_details.{text_tokens,image_tokens}，
 	// 按量付费官方价 文本 ¥0.7/MTok、图片 ¥1.8/MTok；汇率口径 ÷7.14（与本表其他国产模型一致，¥1≈$0.14）。
@@ -760,6 +846,9 @@ func (s *BillingService) initFallbackPricing() {
 // getFallbackPricing 根据模型系列获取回退价格
 func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	modelLower := strings.ToLower(model)
+	if pricing := s.fallbackPrices[modelLower]; pricing != nil {
+		return pricing
+	}
 
 	// 按模型系列匹配
 	if strings.Contains(modelLower, "opus") {
@@ -902,14 +991,28 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	if strings.Contains(modelLower, "minimax-m2.7") || strings.Contains(modelLower, "minimax-m2-7") {
 		return s.fallbackPrices["minimax-m2.7"]
 	}
+	if strings.Contains(modelLower, "minimax-m2.5-highspeed") || strings.Contains(modelLower, "minimax-m2-5-highspeed") {
+		return s.fallbackPrices["minimax-m2.5-highspeed"]
+	}
 	if strings.Contains(modelLower, "minimax-m2.5") || strings.Contains(modelLower, "minimax-m2-5") {
 		return s.fallbackPrices["minimax-m2.5"]
+	}
+	if strings.Contains(modelLower, "minimax-m2.1-highspeed") || strings.Contains(modelLower, "minimax-m2-1-highspeed") {
+		return s.fallbackPrices["minimax-m2.1-highspeed"]
 	}
 	if strings.Contains(modelLower, "minimax-m2.1") || strings.Contains(modelLower, "minimax-m2-1") {
 		return s.fallbackPrices["minimax-m2.1"]
 	}
 	if strings.Contains(modelLower, "minimax-m2") || strings.Contains(modelLower, "minimax-m-2") {
 		return s.fallbackPrices["minimax-m2"]
+	}
+
+	// Xiaomi MiMo V2.5: match Pro first because it contains the base model name.
+	if strings.Contains(modelLower, "mimo-v2.5-pro") || strings.Contains(modelLower, "mimo-v2-5-pro") {
+		return s.fallbackPrices["mimo-v2.5-pro"]
+	}
+	if strings.Contains(modelLower, "mimo-v2.5") || strings.Contains(modelLower, "mimo-v2-5") {
+		return s.fallbackPrices["mimo-v2.5"]
 	}
 
 	// 火山方舟 豆包 Embedding（多模态向量化）。
@@ -1276,6 +1379,7 @@ func (s *BillingService) computeTokenBreakdown(
 		rateMultiplier = 0
 	}
 
+	pricing = selectModelPricingContextTier(pricing, tokens.InputTokens+tokens.CacheCreationTokens+tokens.CacheReadTokens)
 	inputPrice := pricing.InputPricePerToken
 	outputPrice := pricing.OutputPricePerToken
 	cacheReadPrice := pricing.CacheReadPricePerToken
@@ -1373,6 +1477,24 @@ func (s *BillingService) computeTokenBreakdown(
 	bd.LongContextBillingApplied = baselineCost != nil && bd.ActualCost > baselineCost.ActualCost
 
 	return bd
+}
+
+func selectModelPricingContextTier(pricing *ModelPricing, inputTokens int) *ModelPricing {
+	if pricing == nil || len(pricing.ContextTiers) == 0 {
+		return pricing
+	}
+	for _, tier := range pricing.ContextTiers {
+		if tier.MaxInputTokens != nil && inputTokens > *tier.MaxInputTokens {
+			continue
+		}
+		cloned := *pricing
+		cloned.ContextTiers = nil
+		cloned.InputPricePerToken = tier.InputPricePerToken
+		cloned.OutputPricePerToken = tier.OutputPricePerToken
+		cloned.CacheReadPricePerToken = tier.CacheReadPricePerToken
+		return &cloned
+	}
+	return pricing
 }
 
 // computeCacheCreationCost 计算缓存创建费用（支持 5m/1h 分类或标准计费）。

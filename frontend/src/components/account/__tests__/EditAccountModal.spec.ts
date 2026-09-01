@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
 const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
@@ -166,6 +166,26 @@ function buildAccount() {
   } as any
 }
 
+function buildMiMoTokenPlanAccount() {
+  return {
+    ...buildAccount(),
+    id: 8,
+    name: 'MiMo Token Plan SGP',
+    platform: 'mimo',
+    credentials_status: { has_api_key: true },
+    credentials: {
+      account_mode: 'coding',
+      api_protocol: 'adaptive',
+      base_url: 'https://token-plan-sgp.xiaomimimo.com/v1',
+      api_base_urls: {
+        chat_completions: 'https://token-plan-sgp.xiaomimimo.com/v1',
+        anthropic: 'https://token-plan-sgp.xiaomimimo.com/anthropic',
+        responses: 'https://token-plan-sgp.xiaomimimo.com/v1'
+      }
+    }
+  } as any
+}
+
 function buildOpenAISparkShadowAccount() {
   const account = buildAccount()
   return {
@@ -326,6 +346,39 @@ function mountModal(account = buildAccount()) {
 describe('EditAccountModal', () => {
   beforeEach(() => {
     authIsSimpleMode.value = true
+  })
+
+  it('rehydrates and switches the complete MiMo Token Plan regional endpoint group', async () => {
+    const account = buildMiMoTokenPlanAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('[data-testid="mimo-token-plan-region-sgp"]').classes()).toContain('border-sky-500')
+    const endpointInputs = wrapper.findAll('input[type="text"]').filter(input =>
+      String(input.element.getAttribute('value') || (input.element as HTMLInputElement).value).includes('xiaomimimo.com')
+    )
+    expect(endpointInputs.map(input => (input.element as HTMLInputElement).value)).toEqual([
+      'https://token-plan-sgp.xiaomimimo.com/v1',
+      'https://token-plan-sgp.xiaomimimo.com/anthropic',
+      'https://token-plan-sgp.xiaomimimo.com/v1'
+    ])
+
+    await wrapper.get('[data-testid="mimo-token-plan-region-eu"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      account_mode: 'coding',
+      api_protocol: 'adaptive',
+      base_url: 'https://token-plan-ams.xiaomimimo.com/v1',
+      api_base_urls: {
+        chat_completions: 'https://token-plan-ams.xiaomimimo.com/v1',
+        anthropic: 'https://token-plan-ams.xiaomimimo.com/anthropic',
+        responses: 'https://token-plan-ams.xiaomimimo.com/v1'
+      }
+    })
   })
 
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {

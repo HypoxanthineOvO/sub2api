@@ -429,13 +429,19 @@
       </div>
     </template>
 
-    <!-- CN providers (Kimi / Zhipu / DeepSeek): coding-plan quota or payg balance -->
-    <template v-else-if="account.platform === 'kimi' || account.platform === 'zhipu' || account.platform === 'deepseek'">
+    <!-- CN providers: token-plan quota, payg balance, or an explicit console-only state -->
+    <template v-else-if="isCnProvider">
       <div class="space-y-1">
         <!-- 子单元格各自按 模式×平台 判定可见；两者都不可见时（智谱 payg 无公开
              余额端点、coding 探测也不适用）才回落到占位符。 -->
+		<div
+		  v-if="quotaConsoleOnly"
+		  class="text-[10px] text-sky-600 dark:text-sky-400"
+		  :title="t('admin.accounts.cnProviders.quotaConsoleOnlyTooltip')"
+		  data-test="quota-console-only"
+		>{{ t('admin.accounts.cnProviders.quotaConsoleOnly') }}</div>
         <div
-          v-if="!cnQuotaCellVisible && !cnBalanceCellVisible"
+          v-else-if="!cnQuotaCellVisible && !cnBalanceCellVisible"
           class="text-xs text-gray-400"
           :title="t('admin.accounts.cnProviders.noBalanceEndpoint')"
         >-</div>
@@ -651,7 +657,11 @@ import GrokQuotaProbeCell from './GrokQuotaProbeCell.vue'
 import CNProviderQuotaCell from './CNProviderQuotaCell.vue'
 import CNProviderBalanceCell from './CNProviderBalanceCell.vue'
 import OllamaCloudUsageCell from './OllamaCloudUsageCell.vue'
-import { cnQuotaCellVisible as cnQuotaCellVisibleFn, cnBalanceCellVisible as cnBalanceCellVisibleFn } from './credentialsBuilder'
+import {
+  cnQuotaCellVisible as cnQuotaCellVisibleFn,
+  cnBalanceCellVisible as cnBalanceCellVisibleFn,
+  isCnProviderPlatform
+} from './credentialsBuilder'
 
 // Module-level cache shared across all AccountUsageCell instances
 const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
@@ -721,7 +731,11 @@ const showUsageWindows = computed(() => {
   if (
     props.account.platform === 'kimi' ||
     props.account.platform === 'zhipu' ||
-    props.account.platform === 'deepseek'
+    props.account.platform === 'deepseek' ||
+    props.account.platform === 'minimax' ||
+    props.account.platform === 'mimo' ||
+    props.account.platform === 'hunyuan' ||
+    props.account.platform === 'qwen'
   ) {
     return true
   }
@@ -753,6 +767,11 @@ const cnAccountMode = computed(() => {
   const mode = props.account.credentials?.account_mode
   return typeof mode === 'string' ? mode : ''
 })
+const isCnProvider = computed(() => isCnProviderPlatform(props.account.platform))
+const quotaConsoleOnly = computed(() =>
+  ['mimo', 'hunyuan', 'qwen'].includes(props.account.platform) &&
+  cnAccountMode.value === 'coding'
+)
 const cnQuotaCellVisible = computed(() => cnQuotaCellVisibleFn(props.account.platform, cnAccountMode.value))
 const cnBalanceCellVisible = computed(() => cnBalanceCellVisibleFn(props.account.platform, cnAccountMode.value))
 
@@ -1374,9 +1393,9 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
   error.value = null
 
   try {
-		const fetchFn = () => options?.source
-			? adminAPI.accounts.getUsage(props.account.id, options.source, options.bypassCache === true)
-			: adminAPI.accounts.getUsage(props.account.id)
+    const fetchFn = () => options?.source
+      ? adminAPI.accounts.getUsage(props.account.id, options.source, options.bypassCache === true)
+      : adminAPI.accounts.getUsage(props.account.id)
     const result = await enqueueUsageRequest(props.account, fetchFn)
     if (!unmounted.value) {
       usageInfo.value = result

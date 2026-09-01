@@ -407,9 +407,9 @@ func TestGatewayModels_CompositeUnmappedAccountsFallbackToLinkedPlatformsOnly(t 
 	require.NotContains(t, ids, "gemini-2.5-flash")
 }
 
-// CN 供应商没有静态默认模型列表：composite 下无映射的可调度 CN 账号不得把
-// defaultModelIDsForPlatform default 分支的 Claude 列表挂到 CN 平台名下。
-func TestGatewayModels_CompositeUnmappedCNAccountsContributeNoDefaults(t *testing.T) {
+// 既有 CN 平台保持 mapping-only；有可靠静态目录的 MiniMax/MiMo 在
+// composite 下可贡献默认模型，同时不得泄漏 Claude fallback。
+func TestGatewayModels_CompositeCNDefaultsFollowProviderCatalog(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	groupID := int64(35)
@@ -421,6 +421,8 @@ func TestGatewayModels_CompositeUnmappedCNAccountsContributeNoDefaults(t *testin
 					{ID: 2, Platform: service.PlatformKimi},
 					{ID: 3, Platform: service.PlatformZhipu},
 					{ID: 4, Platform: service.PlatformDeepseek},
+					{ID: 5, Platform: service.PlatformMinimax},
+					{ID: 6, Platform: service.PlatformMiMo},
 				},
 			},
 		},
@@ -442,6 +444,8 @@ func TestGatewayModels_CompositeUnmappedCNAccountsContributeNoDefaults(t *testin
 
 	ids := modelIDsForTest(got.Data)
 	require.Contains(t, ids, "gpt-5.5")
+	require.Contains(t, ids, "MiniMax-M3")
+	require.Contains(t, ids, "mimo-v2.5")
 	require.NotContains(t, ids, "claude-sonnet-4-6")
 }
 
@@ -455,6 +459,13 @@ func TestDefaultModelIDsForPlatform_CNProvidersKeepClaudeDefaults(t *testing.T) 
 	for _, platform := range []string{service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek} {
 		require.Equal(t, want, defaultModelIDsForPlatform(platform), "platform=%s", platform)
 	}
+}
+
+func TestDefaultModelIDsForPlatform_MinimaxMiMoUseProviderCatalog(t *testing.T) {
+	require.Equal(t, service.DefaultCNProviderModelIDs(service.PlatformMinimax), defaultModelIDsForPlatform(service.PlatformMinimax))
+	require.Equal(t, service.DefaultCNProviderModelIDs(service.PlatformMiMo), defaultModelIDsForPlatform(service.PlatformMiMo))
+	require.Contains(t, defaultModelIDsForPlatform(service.PlatformMinimax), "MiniMax-M3")
+	require.Equal(t, []string{"mimo-v2.5", "mimo-v2.5-pro"}, defaultModelIDsForPlatform(service.PlatformMiMo))
 }
 
 func TestGatewayModels_CustomModelsListKeepsConcreteModelAllowedByWildcardMapping(t *testing.T) {

@@ -55,6 +55,15 @@ describe('useModelWhitelist', () => {
     expect(models).toContain('grok-imagine-video-1.5')
   })
 
+  it('MiniMax 与 MiMo 平台返回各自模型白名单', () => {
+    expect(getModelsByPlatform('minimax')).toContain('MiniMax-M3')
+    expect(getModelsByPlatform('minimax')).toContain('MiniMax-M2.7-highspeed')
+    expect(getModelsByPlatform('minimax')).toContain('MiniMax-M2.5')
+    expect(getModelsByPlatform('minimax')).toContain('MiniMax-M2.1-highspeed')
+    expect(getModelsByPlatform('minimax')).not.toContain('abab6.5-chat')
+    expect(getModelsByPlatform('mimo')).toContain('mimo-v2.5')
+  })
+
   it('combined 模式支持 Grok 4.5 官方别名映射', () => {
     const mapping = buildModelMappingObject(
       'combined',

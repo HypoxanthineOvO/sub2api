@@ -161,13 +161,13 @@
             Grok
           </button>
         </div>
-        <!-- CN providers row: Kimi / Zhipu GLM / DeepSeek -->
+        <!-- CN providers row -->
         <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
           <button
             type="button"
             @click="selectCNPlatform('kimi')"
             :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              'flex min-w-32 flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
               form.platform === 'kimi'
                 ? 'bg-white text-pink-600 shadow-sm dark:bg-dark-600 dark:text-pink-400'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
@@ -180,7 +180,7 @@
             type="button"
             @click="selectCNPlatform('zhipu')"
             :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              'flex min-w-32 flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
               form.platform === 'zhipu'
                 ? 'bg-white text-indigo-600 shadow-sm dark:bg-dark-600 dark:text-indigo-400'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
@@ -193,7 +193,7 @@
             type="button"
             @click="selectCNPlatform('deepseek')"
             :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              'flex min-w-32 flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
               form.platform === 'deepseek'
                 ? 'bg-white text-teal-600 shadow-sm dark:bg-dark-600 dark:text-teal-400'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
@@ -201,6 +201,58 @@
           >
             <PlatformIcon platform="deepseek" size="sm" />
             DeepSeek
+          </button>
+          <button
+            type="button"
+            @click="selectCNPlatform('minimax')"
+            :class="[
+              'flex min-w-32 flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'minimax'
+                ? 'bg-white text-rose-600 shadow-sm dark:bg-dark-600 dark:text-rose-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="minimax" size="sm" />
+            MiniMax
+          </button>
+          <button
+            type="button"
+            @click="selectCNPlatform('mimo')"
+            :class="[
+              'flex min-w-32 flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'mimo'
+                ? 'bg-white text-sky-600 shadow-sm dark:bg-dark-600 dark:text-sky-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="mimo" size="sm" />
+            MiMo
+          </button>
+          <button
+            type="button"
+            @click="selectCNPlatform('hunyuan')"
+            :class="[
+              'flex min-w-32 flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'hunyuan'
+                ? 'bg-white text-emerald-600 shadow-sm dark:bg-dark-600 dark:text-emerald-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="hunyuan" size="sm" />
+            Hunyuan
+          </button>
+          <button
+            type="button"
+            @click="selectCNPlatform('qwen')"
+            :class="[
+              'flex min-w-32 flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'qwen'
+                ? 'bg-white text-cyan-600 shadow-sm dark:bg-dark-600 dark:text-cyan-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="qwen" size="sm" />
+            Qwen
           </button>
         </div>
       </div>
@@ -483,7 +535,7 @@
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.cnProviders.accountMode.paygDesc') }}</span>
             </div>
           </button>
-          <!-- Coding Plan (kimi / zhipu only — DeepSeek has no coding plan) -->
+          <!-- Token/Coding Plan (DeepSeek has no subscription plan) -->
           <button
             v-if="form.platform !== 'deepseek'"
             type="button"
@@ -507,7 +559,7 @@
             </div>
             <div>
               <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.cnProviders.accountMode.coding') }}</span>
-              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.cnProviders.accountMode.codingDesc') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t(`admin.accounts.cnProviders.accountMode.${form.platform === 'mimo' ? 'codingMimoDesc' : 'codingDesc'}`) }}</span>
             </div>
           </button>
         </div>
@@ -515,6 +567,13 @@
 
       <!-- API Protocol Selection (Kimi / Zhipu / DeepSeek) -->
       <div v-if="isCNPlatform" class="mt-4">
+        <div
+          v-if="form.platform === 'mimo' && accountMode === 'coding'"
+          class="mb-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"
+          data-test="mimo-token-plan-warning"
+        >
+          {{ t('admin.accounts.cnProviders.accountMode.mimoUsageWarning') }}
+        </div>
         <label class="input-label">{{ t('admin.accounts.cnProviders.apiProtocol.title') }}</label>
         <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <button
@@ -1276,6 +1335,11 @@
         </div>
         <div v-else>
           <label class="input-label">{{ t('admin.accounts.cnProviders.apiProtocol.endpoints') }}</label>
+          <MiMoTokenPlanRegionPicker
+            v-if="form.platform === 'mimo' && accountMode === 'coding'"
+            v-model="mimoTokenPlanRegion"
+            class="mt-2"
+          />
           <div class="mt-2 space-y-3">
             <div v-for="item in cnAdaptiveProtocolOptions" :key="item.value">
               <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
@@ -1289,7 +1353,7 @@
               />
             </div>
           </div>
-          <p v-if="form.platform !== 'deepseek'" class="input-hint">
+          <p v-if="!cnSupportsResponses" class="input-hint">
             {{ t('admin.accounts.cnProviders.apiProtocol.responsesFallbackDesc') }}
           </p>
         </div>
@@ -2996,7 +3060,7 @@
         </div>
       </div>
 
-      <!-- Anthropic API Key 自动透传开关 -->
+      <!-- Anthropic API Key passthrough -->
       <div
         v-if="form.platform === 'anthropic' && accountCategory === 'apikey'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -3027,7 +3091,7 @@
       </div>
 
       <div
-        v-if="form.platform === 'anthropic' && accountCategory === 'apikey'"
+        v-if="(form.platform === 'anthropic' || form.platform === 'minimax' || form.platform === 'mimo') && accountCategory === 'apikey'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -3037,7 +3101,11 @@
               {{ t('admin.accounts.anthropic.apiKeyAuthSchemeDesc') }}
             </p>
           </div>
-          <select v-model="anthropicAPIKeyAuthScheme" class="input w-52 text-sm">
+          <select
+            v-model="anthropicAPIKeyAuthScheme"
+            class="input w-52 text-sm"
+            data-testid="anthropic-apikey-auth-scheme"
+          >
             <option value="x_api_key">{{ t('admin.accounts.anthropic.apiKeyAuthSchemeXApiKey') }}</option>
             <option value="authorization_bearer">{{ t('admin.accounts.anthropic.apiKeyAuthSchemeBearer') }}</option>
           </select>
@@ -3759,6 +3827,7 @@ import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
+import MiMoTokenPlanRegionPicker from '@/components/account/MiMoTokenPlanRegionPicker.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import {
@@ -3767,11 +3836,18 @@ import {
   applyInterceptWarmup,
   defaultCNAdaptiveBaseUrls,
   defaultCNBaseUrl,
+  cnProtocolSiblingBaseUrl,
+  cnProviderSupportsResponses,
+  mimoTokenPlanBaseUrls,
+  mimoTokenPlanRegionFromURL,
+  isCnProviderPlatform,
   isHeaderOverrideCapable,
   validateHeaderOverrideRows,
   type CnAccountMode,
   type CnApiProtocol,
   type CnNativeApiProtocol,
+  type CnProviderPlatform,
+  type MiMoTokenPlanRegion,
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
@@ -3959,25 +4035,28 @@ const adaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
   anthropic: '',
   responses: ''
 })
-const isCNPlatform = computed(
-  () => form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek'
-)
+const mimoTokenPlanRegion = ref<MiMoTokenPlanRegion>('cn')
+const isCNPlatform = computed(() => isCnProviderPlatform(form.platform))
+const cnSupportsResponses = computed(() => cnProviderSupportsResponses(form.platform, accountMode.value))
 // CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
 // `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
-const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek'>(() => {
-  if (form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek') {
+const cnPresetPlatform = computed<CnProviderPlatform>(() => {
+  if (isCnProviderPlatform(form.platform)) {
     return form.platform
   }
   return 'kimi'
 })
-// 当前平台可选的协议档（responses 仅 deepseek）。
+// 当前平台可选的协议档。
 const cnProtocolOptions = computed<Array<{ value: CnApiProtocol; labelKey: string }>>(() => {
+  if (form.platform === 'hunyuan' || form.platform === 'qwen') {
+    return [{ value: 'chat_completions', labelKey: 'chatCompletions' }]
+  }
   const opts: Array<{ value: CnApiProtocol; labelKey: string }> = [
-    { value: 'adaptive', labelKey: 'adaptive' },
     { value: 'chat_completions', labelKey: 'chatCompletions' },
     { value: 'anthropic', labelKey: 'anthropic' }
   ]
-  if (form.platform === 'deepseek') {
+  opts.unshift({ value: 'adaptive', labelKey: 'adaptive' })
+  if (cnProviderSupportsResponses(form.platform, accountMode.value)) {
     opts.push({ value: 'responses', labelKey: 'responses' })
   }
   return opts
@@ -3987,12 +4066,14 @@ const cnAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol; l
     { value: 'chat_completions', labelKey: 'chatCompletions' },
     { value: 'anthropic', labelKey: 'anthropic' }
   ]
-  if (form.platform === 'deepseek') opts.push({ value: 'responses', labelKey: 'responses' })
+  if (cnProviderSupportsResponses(form.platform, accountMode.value)) opts.push({ value: 'responses', labelKey: 'responses' })
   return opts
 })
 
-function resetAdaptiveBaseUrls(platform: 'kimi' | 'zhipu' | 'deepseek', mode: CnAccountMode) {
-  adaptiveBaseUrls.value = defaultCNAdaptiveBaseUrls(platform, mode)
+function resetAdaptiveBaseUrls(platform: CnProviderPlatform, mode: CnAccountMode) {
+  adaptiveBaseUrls.value = platform === 'mimo' && mode === 'coding'
+    ? mimoTokenPlanBaseUrls(mimoTokenPlanRegion.value)
+    : defaultCNAdaptiveBaseUrls(platform, mode)
 }
 // 当前选中平台的品牌色（选中卡片描边 / 图标底色），与 platformColors 取色一致。
 const cnAccentActiveClass = computed(() => {
@@ -4003,6 +4084,10 @@ const cnAccentActiveClass = computed(() => {
       return 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
     case 'deepseek':
       return 'border-teal-500 bg-teal-50 dark:bg-teal-900/20'
+    case 'minimax':
+      return 'border-rose-500 bg-rose-50 dark:bg-rose-900/20'
+    case 'mimo':
+      return 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
     default:
       return 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
   }
@@ -4015,17 +4100,22 @@ const cnAccentIconClass = computed(() => {
       return 'bg-indigo-500 text-white'
     case 'deepseek':
       return 'bg-teal-500 text-white'
+    case 'minimax':
+      return 'bg-rose-500 text-white'
+    case 'mimo':
+      return 'bg-sky-500 text-white'
     default:
       return 'bg-primary-500 text-white'
   }
 })
 // 切换国产供应商平台：强制 apikey 类型，deepseek 无 coding 套餐故锁定 payg，
 // 协议回落 adaptive，并把 base url 重置为该平台默认端点。
-function selectCNPlatform(platform: 'kimi' | 'zhipu' | 'deepseek') {
+function selectCNPlatform(platform: CnProviderPlatform) {
   form.platform = platform
   form.type = 'apikey'
   accountCategory.value = 'apikey'
-  apiProtocol.value = 'adaptive'
+  apiProtocol.value = platform === 'hunyuan' || platform === 'qwen' ? 'chat_completions' : 'adaptive'
+  mimoTokenPlanRegion.value = 'cn'
   if (platform === 'deepseek') {
     accountMode.value = 'payg'
   }
@@ -4035,9 +4125,14 @@ function selectCNPlatform(platform: 'kimi' | 'zhipu' | 'deepseek') {
 // 账号类型 / 协议变更时同步默认 base url。
 watch(accountMode, (mode, previousMode) => {
   if (!isCNPlatform.value) return
+  if (form.platform === 'mimo' && mode === 'coding' && apiProtocol.value === 'responses') {
+    apiProtocol.value = 'chat_completions'
+  }
   if (apiProtocol.value === 'adaptive') {
     const previousDefaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, previousMode)
-    const nextDefaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, mode)
+    const nextDefaults = form.platform === 'mimo' && mode === 'coding'
+      ? mimoTokenPlanBaseUrls(mimoTokenPlanRegion.value)
+      : defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, mode)
     for (const item of cnAdaptiveProtocolOptions.value) {
       if (!adaptiveBaseUrls.value[item.value] || adaptiveBaseUrls.value[item.value] === previousDefaults[item.value]) {
         adaptiveBaseUrls.value[item.value] = nextDefaults[item.value]
@@ -4058,13 +4153,27 @@ watch(apiProtocol, (protocol) => {
     apiKeyBaseUrl.value = adaptiveBaseUrls.value.chat_completions
     return
   }
-  apiKeyBaseUrl.value = defaultCNBaseUrl(form.platform, accountMode.value, protocol)
+  apiKeyBaseUrl.value = cnProtocolSiblingBaseUrl(
+    apiKeyBaseUrl.value,
+    form.platform,
+    accountMode.value,
+    protocol
+  )
+})
+watch(mimoTokenPlanRegion, (region) => {
+  if (form.platform !== 'mimo' || accountMode.value !== 'coding') return
+  const urls = mimoTokenPlanBaseUrls(region)
+  adaptiveBaseUrls.value = urls
+  apiKeyBaseUrl.value = apiProtocol.value === 'anthropic' ? urls.anthropic : urls.chat_completions
 })
 // 点击预设端点：同时回填 base url、账号类型与协议。
 function onCnPresetSelect(preset: { mode: CnAccountMode; protocol: CnApiProtocol; url: string }) {
   accountMode.value = preset.mode
   apiProtocol.value = preset.protocol
   apiKeyBaseUrl.value = preset.url
+  if (form.platform === 'mimo' && preset.mode === 'coding') {
+    mimoTokenPlanRegion.value = mimoTokenPlanRegionFromURL(preset.url)
+  }
 }
 
 const syncPreviewCredentials = computed(() => {
@@ -4565,7 +4674,7 @@ watch(
   () => form.platform,
   (newPlatform) => {
     // Reset base URL based on platform
-    if (newPlatform === 'kimi' || newPlatform === 'zhipu' || newPlatform === 'deepseek') {
+    if (isCnProviderPlatform(newPlatform)) {
       apiKeyBaseUrl.value = defaultCNBaseUrl(newPlatform, accountMode.value, apiProtocol.value)
     } else {
       apiKeyBaseUrl.value =
@@ -4636,7 +4745,10 @@ watch(
     }
     if (newPlatform !== 'anthropic') {
       anthropicPassthroughEnabled.value = false
-      anthropicAPIKeyAuthScheme.value = 'x_api_key'
+      anthropicAPIKeyAuthScheme.value =
+        newPlatform === 'minimax' || newPlatform === 'mimo'
+          ? 'authorization_bearer'
+          : 'x_api_key'
       webSearchEmulationMode.value = 'default'
     }
     // 请求头覆写为平台相关配置（常用头集合不同），切换平台时清空，
@@ -4663,9 +4775,12 @@ watch(
       codexCLIOnlyEnabled.value = false
       codexCLIOnlyAppServerEnabled.value = false
     }
-    if (platform !== 'anthropic' || category !== 'apikey') {
+    if ((platform !== 'anthropic' && platform !== 'minimax' && platform !== 'mimo') || category !== 'apikey') {
       anthropicPassthroughEnabled.value = false
-      anthropicAPIKeyAuthScheme.value = 'x_api_key'
+      anthropicAPIKeyAuthScheme.value =
+        (platform === 'minimax' || platform === 'mimo') && category === 'apikey'
+          ? 'authorization_bearer'
+          : 'x_api_key'
       webSearchEmulationMode.value = 'default'
     }
   }
@@ -5020,6 +5135,7 @@ const resetForm = () => {
   accountMode.value = 'payg'
   apiProtocol.value = 'adaptive'
   adaptiveBaseUrls.value = { chat_completions: '', anthropic: '', responses: '' }
+  mimoTokenPlanRegion.value = 'cn'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
   upstreamBillingAutoProbeEnabled.value = true
@@ -5202,25 +5318,33 @@ const buildOpenAICodexImportExtra = (): Record<string, unknown> | undefined => {
 }
 
 const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
-  if (form.platform !== 'anthropic' || accountCategory.value !== 'apikey') {
+  const supportsAuthScheme =
+    form.platform === 'anthropic' || form.platform === 'minimax' || form.platform === 'mimo'
+  if (!supportsAuthScheme || accountCategory.value !== 'apikey') {
     return base
   }
 
   const extra: Record<string, unknown> = { ...(base || {}) }
-  if (anthropicPassthroughEnabled.value) {
-    extra.anthropic_passthrough = true
-  } else {
-    delete extra.anthropic_passthrough
+  if (form.platform === 'anthropic') {
+    if (anthropicPassthroughEnabled.value) {
+      extra.anthropic_passthrough = true
+    } else {
+      delete extra.anthropic_passthrough
+    }
   }
   if (anthropicAPIKeyAuthScheme.value === 'authorization_bearer') {
     extra.anthropic_apikey_auth_scheme = 'authorization_bearer'
+  } else if (form.platform === 'minimax' || form.platform === 'mimo') {
+    extra.anthropic_apikey_auth_scheme = 'x_api_key'
   } else {
     delete extra.anthropic_apikey_auth_scheme
   }
-  if (webSearchEmulationMode.value === 'default') {
-    delete extra.web_search_emulation
-  } else {
-    extra.web_search_emulation = webSearchEmulationMode.value
+  if (form.platform === 'anthropic') {
+    if (webSearchEmulationMode.value === 'default') {
+      delete extra.web_search_emulation
+    } else {
+      extra.web_search_emulation = webSearchEmulationMode.value
+    }
   }
 
   return Object.keys(extra).length > 0 ? extra : undefined
@@ -5485,7 +5609,7 @@ const handleSubmit = async () => {
   // 国产供应商：账号模式 + 协议 + 对应端点写入凭据；后端按 account_mode 路由
   // 额度/余额探测，按 api_protocol 路由转发端点与格式。注意 CN apikey 走本函数
   // 的通用路径（直接 doCreateAccount），不经过 createAccountAndFinish。
-  if (form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek') {
+  if (isCnProviderPlatform(form.platform)) {
     credentials.account_mode = accountMode.value
     credentials.api_protocol = apiProtocol.value
     if (apiProtocol.value === 'adaptive') {
@@ -6506,22 +6630,22 @@ const handleAntigravityExchange = async (authCode: string) => {
       state: stateToUse,
       proxyId: form.proxy_id
     })
-		if (!tokenInfo) return
+    if (!tokenInfo) return
 
-		const credentials = antigravityOAuth.buildCredentials(tokenInfo)
-		applyAntigravityProjectID(credentials, antigravityProjectId.value, 'create')
-		applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
-		// Antigravity 只使用映射模式
-		const antigravityModelMapping = buildModelMappingObject(
-			'mapping',
-			[],
-			antigravityModelMappings.value
-		)
-		if (antigravityModelMapping) {
-			credentials.model_mapping = antigravityModelMapping
-		}
-		const extra = buildAntigravityExtra()
-		await createAccountAndFinish('antigravity', 'oauth', credentials, extra)
+    const credentials = antigravityOAuth.buildCredentials(tokenInfo)
+    applyAntigravityProjectID(credentials, antigravityProjectId.value, 'create')
+    applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
+    // Antigravity 只使用映射模式
+    const antigravityModelMapping = buildModelMappingObject(
+      'mapping',
+      [],
+      antigravityModelMappings.value
+    )
+    if (antigravityModelMapping) {
+      credentials.model_mapping = antigravityModelMapping
+    }
+    const extra = buildAntigravityExtra()
+    await createAccountAndFinish('antigravity', 'oauth', credentials, extra)
   } catch (error: any) {
     antigravityOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
     appStore.showError(antigravityOAuth.error.value)

@@ -42,7 +42,9 @@ export function isHeaderOverrideCapable(platform: string, type: string): boolean
     platform === 'openai' ||
     platform === 'kimi' ||
     platform === 'zhipu' ||
-    platform === 'deepseek'
+    platform === 'deepseek' ||
+    platform === 'minimax' ||
+    platform === 'mimo'
   ) {
     return type === 'apikey'
   }
@@ -248,7 +250,7 @@ export const GROK_BASE_URL_PRESETS: GrokBaseUrlPreset[] = [
   { label: 'eu-west-1', url: 'https://eu-west-1.api.x.ai/v1' }
 ]
 
-// ========== 国产供应商（Kimi / Zhipu / DeepSeek）base_url 预设 ==========
+// ========== 国产供应商（Kimi / Zhipu / DeepSeek / MiniMax / MiMo）base_url 预设 ==========
 // 与后端 service/domain_constants.go 的默认 base url 保持一致。
 // 账号类型（payg 按量付费 / coding 编程套餐）决定额度监控方式；
 // API 协议（chat_completions / anthropic / responses）决定转发端点与格式，
@@ -256,7 +258,7 @@ export const GROK_BASE_URL_PRESETS: GrokBaseUrlPreset[] = [
 
 export type CnAccountMode = 'payg' | 'coding'
 
-/** 仅 deepseek 支持原生 responses；adaptive 会按入站协议选择原生端点。 */
+/** 支持原生 Responses 的供应商会在 adaptive 下按入站协议选择原生端点。 */
 export type CnApiProtocol = 'adaptive' | 'chat_completions' | 'anthropic' | 'responses'
 export type CnNativeApiProtocol = Exclude<CnApiProtocol, 'adaptive'>
 
@@ -269,7 +271,46 @@ export interface CnBaseUrlPreset {
 }
 
 /** 各供应商按账号类型 × API 协议分档的快捷端点（点击快速填充，输入框仍可自由填写）。 */
-export const CN_BASE_URL_PRESETS: Record<'kimi' | 'zhipu' | 'deepseek', CnBaseUrlPreset[]> = {
+export type CnProviderPlatform = 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'mimo' | 'hunyuan' | 'qwen'
+
+export type MiMoTokenPlanRegion = 'cn' | 'sgp' | 'eu'
+
+export const MIMO_TOKEN_PLAN_REGIONS: ReadonlyArray<{
+  value: MiMoTokenPlanRegion
+  label: string
+  origin: string
+}> = [
+  { value: 'cn', label: 'CN', origin: 'https://token-plan-cn.xiaomimimo.com' },
+  { value: 'sgp', label: 'SGP', origin: 'https://token-plan-sgp.xiaomimimo.com' },
+  { value: 'eu', label: 'EU (AMS)', origin: 'https://token-plan-ams.xiaomimimo.com' }
+]
+
+export function mimoTokenPlanBaseUrls(
+  region: MiMoTokenPlanRegion
+): Record<CnNativeApiProtocol, string> {
+  const selected = MIMO_TOKEN_PLAN_REGIONS.find(item => item.value === region) ?? MIMO_TOKEN_PLAN_REGIONS[0]
+  return {
+    chat_completions: `${selected.origin}/v1`,
+    anthropic: `${selected.origin}/anthropic`,
+    responses: `${selected.origin}/v1`
+  }
+}
+
+export function mimoTokenPlanRegionFromURL(url: string): MiMoTokenPlanRegion {
+  try {
+    const hostname = new URL(url).hostname
+    return MIMO_TOKEN_PLAN_REGIONS.find(item => new URL(item.origin).hostname === hostname)?.value ?? 'cn'
+  } catch {
+    return 'cn'
+  }
+}
+
+export function isCnProviderPlatform(platform: string): platform is CnProviderPlatform {
+  return platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' ||
+    platform === 'minimax' || platform === 'mimo' || platform === 'hunyuan' || platform === 'qwen'
+}
+
+export const CN_BASE_URL_PRESETS: Record<CnProviderPlatform, CnBaseUrlPreset[]> = {
   kimi: [
     { mode: 'payg', protocol: 'chat_completions', label: 'Moonshot', url: 'https://api.moonshot.cn/v1' },
     { mode: 'payg', protocol: 'anthropic', label: 'Moonshot Anthropic', url: 'https://api.moonshot.cn/anthropic' },
@@ -286,6 +327,34 @@ export const CN_BASE_URL_PRESETS: Record<'kimi' | 'zhipu' | 'deepseek', CnBaseUr
     { mode: 'payg', protocol: 'chat_completions', label: 'DeepSeek', url: 'https://api.deepseek.com' },
     { mode: 'payg', protocol: 'anthropic', label: 'DeepSeek Anthropic', url: 'https://api.deepseek.com/anthropic' },
     { mode: 'payg', protocol: 'responses', label: 'DeepSeek Responses', url: 'https://api.deepseek.com' }
+  ],
+  minimax: [
+    { mode: 'payg', protocol: 'chat_completions', label: 'MiniMax', url: 'https://api.minimaxi.com/v1' },
+    { mode: 'payg', protocol: 'anthropic', label: 'MiniMax Anthropic', url: 'https://api.minimaxi.com/anthropic' },
+    { mode: 'payg', protocol: 'responses', label: 'MiniMax Responses', url: 'https://api.minimaxi.com/v1' },
+    { mode: 'coding', protocol: 'chat_completions', label: 'MiniMax Token Plan', url: 'https://api.minimaxi.com/v1' },
+    { mode: 'coding', protocol: 'anthropic', label: 'MiniMax Token Plan Anthropic', url: 'https://api.minimaxi.com/anthropic' },
+    { mode: 'coding', protocol: 'responses', label: 'MiniMax Token Plan Responses', url: 'https://api.minimaxi.com/v1' }
+  ],
+  mimo: [
+    { mode: 'payg', protocol: 'chat_completions', label: 'MiMo', url: 'https://api.xiaomimimo.com/v1' },
+    { mode: 'payg', protocol: 'anthropic', label: 'MiMo Anthropic', url: 'https://api.xiaomimimo.com/anthropic' },
+    { mode: 'payg', protocol: 'responses', label: 'MiMo Responses', url: 'https://api.xiaomimimo.com/v1' },
+    ...MIMO_TOKEN_PLAN_REGIONS.flatMap(region => {
+      const urls = mimoTokenPlanBaseUrls(region.value)
+      return [
+        { mode: 'coding' as const, protocol: 'chat_completions' as const, label: `MiMo Token Plan ${region.label}`, url: urls.chat_completions },
+        { mode: 'coding' as const, protocol: 'anthropic' as const, label: `MiMo Token Plan ${region.label} Anthropic`, url: urls.anthropic },
+        { mode: 'coding' as const, protocol: 'responses' as const, label: `MiMo Token Plan ${region.label} Responses`, url: urls.responses }
+      ]
+    })
+  ],
+  hunyuan: [
+    { mode: 'payg', protocol: 'chat_completions', label: 'Hunyuan TokenHub PAYG', url: 'https://tokenhub.tencentmaas.com/v1' },
+    { mode: 'coding', protocol: 'chat_completions', label: 'Hunyuan Personal Token Plan', url: 'https://api.lkeap.cloud.tencent.com/plan/v3' }
+  ],
+  qwen: [
+    { mode: 'payg', protocol: 'chat_completions', label: 'DashScope Compatible Mode', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1' }
   ]
 }
 
@@ -303,11 +372,15 @@ export function defaultCNBaseUrl(
         return 'https://open.bigmodel.cn/api/anthropic'
       case 'deepseek':
         return 'https://api.deepseek.com/anthropic'
+      case 'minimax':
+        return 'https://api.minimaxi.com/anthropic'
+      case 'mimo':
+        return mode === 'coding' ? mimoTokenPlanBaseUrls('cn').anthropic : 'https://api.xiaomimimo.com/anthropic'
       default:
         return ''
     }
   }
-  // responses 仅 deepseek：base 与 chat_completions 相同（端点路径差异由后端处理）。
+  // Responses base 与 chat_completions 相同（端点路径差异由后端处理）。
   switch (platform) {
     case 'kimi':
       return mode === 'coding' ? 'https://api.kimi.com/coding/v1' : 'https://api.moonshot.cn/v1'
@@ -317,21 +390,50 @@ export function defaultCNBaseUrl(
         : 'https://open.bigmodel.cn/api/paas/v4'
     case 'deepseek':
       return 'https://api.deepseek.com'
+    case 'minimax':
+      return 'https://api.minimaxi.com/v1'
+    case 'mimo':
+      return mode === 'coding' ? mimoTokenPlanBaseUrls('cn').chat_completions : 'https://api.xiaomimimo.com/v1'
+    case 'hunyuan':
+      return mode === 'coding' ? 'https://api.lkeap.cloud.tencent.com/plan/v3' : 'https://tokenhub.tencentmaas.com/v1'
+    case 'qwen':
+      return 'https://dashscope.aliyuncs.com/compatible-mode/v1'
     default:
       return ''
   }
 }
 
+/**
+ * Switch between protocol siblings without losing a MiMo Token Plan region.
+ * PAYG and other providers keep their existing default behavior.
+ */
+export function cnProtocolSiblingBaseUrl(
+  currentUrl: string,
+  platform: string,
+  mode: CnAccountMode,
+  protocol: CnNativeApiProtocol
+): string {
+  if (platform === 'mimo' && mode === 'coding') {
+    const region = mimoTokenPlanRegionFromURL(currentUrl)
+    return mimoTokenPlanBaseUrls(region)[protocol]
+  }
+  return defaultCNBaseUrl(platform, mode, protocol)
+}
+
 /** 返回自适应模式下需要配置的原生协议及其默认端点。 */
 export function defaultCNAdaptiveBaseUrls(
-  platform: 'kimi' | 'zhipu' | 'deepseek',
+  platform: CnProviderPlatform,
   mode: CnAccountMode
 ): Record<CnNativeApiProtocol, string> {
   return {
     chat_completions: defaultCNBaseUrl(platform, mode, 'chat_completions'),
     anthropic: defaultCNBaseUrl(platform, mode, 'anthropic'),
-    responses: platform === 'deepseek' ? defaultCNBaseUrl(platform, mode, 'responses') : ''
+    responses: cnProviderSupportsResponses(platform, mode) ? defaultCNBaseUrl(platform, mode, 'responses') : ''
   }
+}
+
+export function cnProviderSupportsResponses(platform: string, _mode?: CnAccountMode): boolean {
+  return platform === 'deepseek' || platform === 'minimax' || platform === 'mimo'
 }
 
 // ===== 国产供应商用量单元格可见性（单一事实源） =====
@@ -339,7 +441,7 @@ export function defaultCNAdaptiveBaseUrls(
 // 共用，避免多处复制条件后一处改另一处漏改。
 
 export function cnQuotaCellVisible(platform: string, accountMode: string): boolean {
-  return (platform === 'kimi' || platform === 'zhipu') && accountMode === 'coding'
+  return (platform === 'kimi' || platform === 'zhipu' || platform === 'minimax') && accountMode === 'coding'
 }
 
 export function cnBalanceCellVisible(platform: string, accountMode: string): boolean {

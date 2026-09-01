@@ -98,6 +98,88 @@ describe('BulkEditAccountModal', () => {
     } as any)
   })
 
+  it('bulk-updates MiniMax account mode, adaptive protocol, and official endpoints together', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['minimax'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('[data-testid="bulk-edit-cn-connection-profile-enabled"]').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-cn-account-mode"]').setValue('coding')
+    await nextTick()
+    await wrapper.get('[data-testid="bulk-edit-cn-api-protocol"]').setValue('adaptive')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      credentials: {
+        account_mode: 'coding',
+        api_protocol: 'adaptive',
+        base_url: 'https://api.minimaxi.com/v1',
+        api_base_urls: {
+          chat_completions: 'https://api.minimaxi.com/v1',
+          anthropic: 'https://api.minimaxi.com/anthropic',
+          responses: 'https://api.minimaxi.com/v1'
+        }
+      }
+    })
+  })
+
+  it('applies a custom Base URL to adaptive Chat instead of leaving the hidden official endpoint active', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['minimax'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('[data-testid="bulk-edit-cn-connection-profile-enabled"]').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-cn-api-protocol"]').setValue('adaptive')
+    await wrapper.get('#bulk-edit-base-url-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-base-url').setValue('https://relay.example.com/v1')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      credentials: {
+        account_mode: 'payg',
+        api_protocol: 'adaptive',
+        base_url: 'https://relay.example.com/v1',
+        api_base_urls: {
+          chat_completions: 'https://relay.example.com/v1',
+          anthropic: 'https://api.minimaxi.com/anthropic',
+          responses: 'https://api.minimaxi.com/v1'
+        }
+      }
+    })
+  })
+
+  it('bulk MiMo Token Plan stores adaptive endpoints in the selected region', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['mimo'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('[data-testid="bulk-edit-cn-connection-profile-enabled"]').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-cn-api-protocol"]').setValue('adaptive')
+    await wrapper.get('[data-testid="bulk-edit-cn-account-mode"]').setValue('coding')
+    await nextTick()
+    await wrapper.get('[data-testid="mimo-token-plan-region-eu"]').trigger('click')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      credentials: {
+        account_mode: 'coding',
+        api_protocol: 'adaptive',
+        base_url: 'https://token-plan-ams.xiaomimimo.com/v1',
+        api_base_urls: {
+          chat_completions: 'https://token-plan-ams.xiaomimimo.com/v1',
+          anthropic: 'https://token-plan-ams.xiaomimimo.com/anthropic',
+          responses: 'https://token-plan-ams.xiaomimimo.com/v1'
+        }
+      }
+    })
+  })
+
   it('批量修改倍率时提示自动同步账号需要先关闭同步', async () => {
     const wrapper = mountModal()
 
@@ -217,7 +299,7 @@ describe('BulkEditAccountModal', () => {
     expect(wrapper.findAll('[data-testid="grok-base-url-preset"]').length).toBe(0)
   })
 
-  it.each(['kimi', 'zhipu', 'deepseek'])('全部目标为 %s API Key 时展示请求头覆写', (platform) => {
+  it.each(['kimi', 'zhipu', 'deepseek', 'minimax', 'mimo'])('全部目标为 %s API Key 时展示请求头覆写', (platform) => {
     const wrapper = mountModal({
       selectedPlatforms: [platform],
       selectedTypes: ['apikey']
@@ -226,7 +308,7 @@ describe('BulkEditAccountModal', () => {
     expect(wrapper.find('#bulk-edit-header-override-enabled').exists()).toBe(true)
   })
 
-  it.each(['kimi', 'zhipu', 'deepseek'])('目标为 %s OAuth 时不展示请求头覆写', (platform) => {
+  it.each(['kimi', 'zhipu', 'deepseek', 'minimax', 'mimo'])('目标为 %s OAuth 时不展示请求头覆写', (platform) => {
     const wrapper = mountModal({
       selectedPlatforms: [platform],
       selectedTypes: ['oauth']

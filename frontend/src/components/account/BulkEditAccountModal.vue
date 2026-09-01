@@ -193,6 +193,49 @@
         </p>
       </div>
 
+      <!-- CN provider account mode and upstream protocol -->
+      <div v-if="bulkCNPlatform" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between gap-4">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.cnProviders.apiProtocol.title') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.bulkEdit.cnConnectionProfileHint') }}
+            </p>
+          </div>
+          <input
+            v-model="enableCNConnectionProfile"
+            type="checkbox"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            data-testid="bulk-edit-cn-connection-profile-enabled"
+          />
+        </div>
+        <div :class="!enableCNConnectionProfile && 'pointer-events-none opacity-50'" class="grid gap-3 sm:grid-cols-2">
+          <Select
+            v-model="cnAccountMode"
+            :disabled="!enableCNConnectionProfile"
+            :options="cnAccountModeOptions"
+            data-testid="bulk-edit-cn-account-mode"
+          />
+          <Select
+            v-model="cnAPIProtocol"
+            :disabled="!enableCNConnectionProfile"
+            :options="cnAPIProtocolOptions"
+            data-testid="bulk-edit-cn-api-protocol"
+          />
+        </div>
+        <MiMoTokenPlanRegionPicker
+          v-if="enableCNConnectionProfile && bulkCNPlatform === 'mimo' && cnAccountMode === 'coding'"
+          v-model="mimoTokenPlanRegion"
+          class="mt-3"
+        />
+        <p
+          v-if="enableCNConnectionProfile && bulkCNPlatform === 'mimo' && cnAccountMode === 'coding'"
+          class="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"
+        >
+          {{ t('admin.accounts.cnProviders.accountMode.mimoUsageWarning') }}
+        </p>
+      </div>
+
       <!-- Base URL (API Key only) -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -1491,6 +1534,7 @@ import Select from '@/components/common/Select.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import MiMoTokenPlanRegionPicker from '@/components/account/MiMoTokenPlanRegionPicker.vue'
 import Icon from '@/components/icons/Icon.vue'
 import {
   buildModelMappingObject as buildModelMappingPayload,
@@ -1503,6 +1547,15 @@ import {
   validateHeaderOverrideRows,
   HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY,
   HEADER_OVERRIDES_CREDENTIAL_KEY,
+  cnProviderSupportsResponses,
+  defaultCNAdaptiveBaseUrls,
+  defaultCNBaseUrl,
+  isCnProviderPlatform,
+  mimoTokenPlanBaseUrls,
+  type CnAccountMode,
+  type CnApiProtocol,
+  type CnProviderPlatform,
+  type MiMoTokenPlanRegion,
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
@@ -1552,6 +1605,17 @@ const allTargetsGrok = computed(
     targetSelectedPlatforms.value.every((p) => p === 'grok')
 )
 const isMixedPlatform = computed(() => targetSelectedPlatforms.value.length > 1)
+const bulkCNPlatform = computed<CnProviderPlatform | null>(() => {
+  if (
+    targetSelectedPlatforms.value.length !== 1 ||
+    targetSelectedTypes.value.length === 0 ||
+    !targetSelectedTypes.value.every(type => type === 'apikey')
+  ) {
+    return null
+  }
+  const platform = targetSelectedPlatforms.value[0]
+  return isCnProviderPlatform(platform) ? platform : null
+})
 
 const allOpenAIPassthroughCapable = computed(() => {
   return (
@@ -1645,6 +1709,7 @@ interface ModelMapping {
 
 // State - field enable flags
 const enableBaseUrl = ref(false)
+const enableCNConnectionProfile = ref(false)
 const enableModelRestriction = ref(false)
 const enableCustomErrorCodes = ref(false)
 const enableInterceptWarmup = ref(false)
@@ -1676,6 +1741,46 @@ const showMixedChannelWarning = ref(false)
 const mixedChannelWarningMessage = ref('')
 const pendingUpdatesForConfirm = ref<Record<string, unknown> | null>(null)
 const baseUrl = ref('')
+const cnAccountMode = ref<CnAccountMode>('payg')
+const cnAPIProtocol = ref<CnApiProtocol>('chat_completions')
+const mimoTokenPlanRegion = ref<MiMoTokenPlanRegion>('cn')
+const cnAccountModeOptions = computed(() => {
+  const options: Array<{ value: CnAccountMode; label: string }> = [
+    { value: 'payg', label: t('admin.accounts.cnProviders.accountMode.payg') }
+  ]
+  if (bulkCNPlatform.value !== 'deepseek') {
+    options.push({ value: 'coding', label: t('admin.accounts.cnProviders.accountMode.coding') })
+  }
+  return options
+})
+const cnAPIProtocolOptions = computed(() => {
+  const platform = bulkCNPlatform.value
+  if (!platform) return []
+  if (platform === 'hunyuan' || platform === 'qwen') {
+    return [{ value: 'chat_completions', label: t('admin.accounts.cnProviders.apiProtocol.chatCompletions') }]
+  }
+  const options: Array<{ value: CnApiProtocol; label: string }> = [
+    { value: 'chat_completions', label: t('admin.accounts.cnProviders.apiProtocol.chatCompletions') },
+    { value: 'anthropic', label: t('admin.accounts.cnProviders.apiProtocol.anthropic') }
+  ]
+  options.unshift({ value: 'adaptive', label: t('admin.accounts.cnProviders.apiProtocol.adaptive') })
+  if (cnProviderSupportsResponses(platform, cnAccountMode.value)) {
+    options.push({ value: 'responses', label: t('admin.accounts.cnProviders.apiProtocol.responses') })
+  }
+  return options
+})
+
+watch([bulkCNPlatform, cnAccountMode], ([platform, mode]) => {
+  if (platform === 'deepseek' && mode === 'coding') cnAccountMode.value = 'payg'
+  if (platform === 'hunyuan' || platform === 'qwen') cnAPIProtocol.value = 'chat_completions'
+  if (
+    platform === 'mimo' &&
+    mode === 'coding' &&
+    cnAPIProtocol.value === 'responses'
+  ) {
+    cnAPIProtocol.value = 'chat_completions'
+  }
+})
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
 const modelMappings = ref<ModelMapping[]>([])
@@ -1966,10 +2071,31 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     updates.group_ids = groupIds.value
   }
 
+  if (enableCNConnectionProfile.value && bulkCNPlatform.value) {
+    credentials.account_mode = cnAccountMode.value
+    credentials.api_protocol = cnAPIProtocol.value
+    if (cnAPIProtocol.value === 'adaptive') {
+      const baseUrls = bulkCNPlatform.value === 'mimo' && cnAccountMode.value === 'coding'
+        ? mimoTokenPlanBaseUrls(mimoTokenPlanRegion.value)
+        : defaultCNAdaptiveBaseUrls(bulkCNPlatform.value, cnAccountMode.value)
+      credentials.api_base_urls = baseUrls
+      credentials.base_url = baseUrls.chat_completions
+    } else if (!enableBaseUrl.value) {
+      credentials.base_url = bulkCNPlatform.value === 'mimo' && cnAccountMode.value === 'coding'
+        ? mimoTokenPlanBaseUrls(mimoTokenPlanRegion.value)[cnAPIProtocol.value]
+        : defaultCNBaseUrl(bulkCNPlatform.value, cnAccountMode.value, cnAPIProtocol.value)
+    }
+    credentialsChanged = true
+  }
+
   if (enableBaseUrl.value) {
     const baseUrlValue = baseUrl.value.trim()
     if (baseUrlValue) {
       credentials.base_url = baseUrlValue
+      if (enableCNConnectionProfile.value && cnAPIProtocol.value === 'adaptive') {
+        const baseUrls = credentials.api_base_urls as Record<string, string>
+        baseUrls.chat_completions = baseUrlValue
+      }
       credentialsChanged = true
     }
   }
@@ -2189,6 +2315,7 @@ const handleSubmit = async () => {
 
   const hasAnyFieldEnabled =
     enableBaseUrl.value ||
+    enableCNConnectionProfile.value ||
     enableOpenAIPassthrough.value ||
     enableOpenAIFlattenNamespaces.value ||
     (enableOpenAILongContextBilling.value && allOpenAIPassthroughCapable.value) ||
@@ -2340,6 +2467,7 @@ watch(
     if (!newShow) {
       // Reset all enable flags
       enableBaseUrl.value = false
+      enableCNConnectionProfile.value = false
       enableModelRestriction.value = false
       enableCustomErrorCodes.value = false
       enableInterceptWarmup.value = false
@@ -2369,6 +2497,9 @@ watch(
 
       // Reset all values
       baseUrl.value = ''
+      cnAccountMode.value = 'payg'
+      cnAPIProtocol.value = 'chat_completions'
+      mimoTokenPlanRegion.value = 'cn'
       openaiPassthroughEnabled.value = false
       openaiFlattenNamespacesEnabled.value = false
       openAILongContextBillingEnabled.value = false

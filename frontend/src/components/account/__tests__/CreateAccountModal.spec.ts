@@ -304,6 +304,88 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     })
   })
 
+  it('submits adaptive MiniMax endpoints with Bearer auth by default', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'MiniMax')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('MiniMax adaptive')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-minimax')
+
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'minimax',
+      credentials: {
+        account_mode: 'payg',
+        api_protocol: 'adaptive',
+        api_base_urls: {
+          chat_completions: 'https://api.minimaxi.com/v1',
+          anthropic: 'https://api.minimaxi.com/anthropic',
+          responses: 'https://api.minimaxi.com/v1'
+        }
+      },
+      extra: { anthropic_apikey_auth_scheme: 'authorization_bearer' }
+    })
+  })
+
+  it('persists explicit x-api-key auth for MiniMax Anthropic-compatible requests', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'MiniMax')
+    await wrapper.get('[data-testid="anthropic-apikey-auth-scheme"]').setValue('x_api_key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('MiniMax x-api-key')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-minimax-x')
+
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'minimax',
+      extra: { anthropic_apikey_auth_scheme: 'x_api_key' }
+    })
+  })
+
+  it('offers adaptive and Responses for MiMo Token Plan with a region picker', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'MiMo')
+    await selectButtonByText(wrapper, 'admin.accounts.cnProviders.accountMode.coding')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="mimo-token-plan-warning"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('admin.accounts.cnProviders.apiProtocol.adaptiveDesc')
+    expect(wrapper.text()).toContain('admin.accounts.cnProviders.apiProtocol.responsesDesc')
+    expect(wrapper.find('[data-testid="cn-adaptive-base-url-chat_completions"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="cn-adaptive-base-url-anthropic"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="cn-adaptive-base-url-responses"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="mimo-token-plan-region-picker"]').exists()).toBe(true)
+  })
+
+  it('stores a MiMo Token Plan adaptive endpoint group in the selected region', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'MiniMax')
+    await selectButtonByText(wrapper, 'admin.accounts.cnProviders.accountMode.coding')
+    await selectButtonByText(wrapper, 'MiMo')
+    await wrapper.get('[data-testid="mimo-token-plan-region-sgp"]').trigger('click')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('MiMo token plan')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-mimo-plan')
+
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'mimo',
+      credentials: {
+        account_mode: 'coding',
+        api_protocol: 'adaptive',
+        base_url: 'https://token-plan-sgp.xiaomimimo.com/v1',
+        api_base_urls: {
+          chat_completions: 'https://token-plan-sgp.xiaomimimo.com/v1',
+          anthropic: 'https://token-plan-sgp.xiaomimimo.com/anthropic',
+          responses: 'https://token-plan-sgp.xiaomimimo.com/v1'
+        }
+      }
+    })
+  })
+
   it('uses the edited adaptive Chat endpoint when previewing upstream models', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'Kimi')

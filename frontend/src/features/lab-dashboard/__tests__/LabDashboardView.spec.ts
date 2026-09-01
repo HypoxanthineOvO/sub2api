@@ -17,7 +17,9 @@ describe('LabDashboardView', () => {
         { name: 'Card C', platform: 'openai', type: 'oauth', status: 'disabled', schedulable: false, billing_mode: 'coding', quota_windows: [{ window: '5h', used_percent: 0 }, { window: 'weekly', used_percent: 100 }], quota_factor: 1, selection_probability_status: 'unavailable', today_requests: 0, today_actual_cost: 0 },
         { name: 'DeepSeek Billed', platform: 'deepseek', type: 'apikey', status: 'active', schedulable: true, billing_mode: 'payg', balances: [{ currency: 'CNY', balance: 12.65 }, { currency: 'USD', balance: 1.75 }], balance_low: true, quota_factor: 1, selection_probability_status: 'unavailable', today_requests: 9, today_actual_cost: 2.5 },
         { name: 'GLM Coding', platform: 'zhipu', type: 'apikey', status: 'active', schedulable: true, billing_mode: 'coding', quota_windows: [{ window: '5h', used_percent: 13 }, { window: 'weekly', used_percent: 92 }], quota_factor: 1, selection_probability_status: 'unavailable', today_requests: 4, today_actual_cost: .5 },
-        { name: 'Kimi Coding', platform: 'kimi', type: 'apikey', status: 'active', schedulable: true, billing_mode: 'coding', quota_windows: [{ window: '5h', used_percent: 0 }, { window: 'weekly', used_percent: 100 }], quota_factor: 1, selection_probability_status: 'unavailable', today_requests: 1, today_actual_cost: .1 }
+        { name: 'Kimi Coding', platform: 'kimi', type: 'apikey', status: 'active', schedulable: true, billing_mode: 'coding', quota_windows: [{ window: '5h', used_percent: 0 }, { window: 'weekly', used_percent: 100 }], quota_factor: 1, selection_probability_status: 'unavailable', today_requests: 1, today_actual_cost: .1 },
+        { name: 'MiniMax Token Plan', platform: 'minimax', type: 'apikey', status: 'active', schedulable: true, billing_mode: 'coding', quota_windows: [{ window: '5h', used_percent: 0 }, { window: 'weekly', used_percent: 10 }], quota_factor: 1, selection_probability_status: 'unavailable', today_requests: 3, today_actual_cost: .2 },
+        { name: 'MiMo Token Plan', platform: 'mimo', type: 'apikey', status: 'active', schedulable: true, billing_mode: 'coding', quota_windows: [], quota_factor: 1, selection_probability_status: 'unavailable', today_requests: 3, today_actual_cost: .2 }
       ],
       leaderboard: { rows: [{ display_name: 'Alice', today_actual_cost: 1, total_actual_cost: 3 }] },
       user_usage_24h: [{ bucket: '10:00', display_name: 'Alice', requests: 2, actual_cost: 1 }],
@@ -47,7 +49,7 @@ describe('LabDashboardView', () => {
     expect(wrapper.text()).toContain('最近 24 小时用户消费')
     expect(wrapper.text()).toContain('最近使用记录')
     expect(wrapper.text()).toContain('已暂停')
-    expect(wrapper.findAll('[data-test="account-card"]')).toHaveLength(6)
+    expect(wrapper.findAll('[data-test="account-card"]')).toHaveLength(8)
     expect(wrapper.get('[data-provider="openai"]').text()).toContain('3 个账号')
     expect(wrapper.get('[data-provider="deepseek"]').text()).toContain('今日费用')
     expect(wrapper.get('[data-provider="deepseek"]').text()).toContain('$2.5')
@@ -61,6 +63,9 @@ describe('LabDashboardView', () => {
     expect(wrapper.get('[data-provider="kimi"]').text()).toContain('Kimi Coding')
     expect(wrapper.get('[data-provider="kimi"]').text()).toContain('5 小时窗口')
     expect(wrapper.get('[data-provider="kimi"]').text()).toContain('100%')
+    expect(wrapper.get('[data-provider="minimax"]').text()).toContain('MiniMax Token Plan')
+    expect(wrapper.get('[data-provider="minimax"]').text()).toContain('10%')
+    expect(wrapper.get('[data-provider="mimo"]').text()).toContain('MiMo Token Plan')
     expect(wrapper.text()).not.toContain('编辑')
     expect(wrapper.text()).not.toContain('删除')
   })

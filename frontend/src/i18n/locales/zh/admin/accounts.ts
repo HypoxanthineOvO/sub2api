@@ -310,14 +310,18 @@ export default {
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
+        minimax: 'MiniMax',
+        mimo: 'MiMo',
       },
       cnProviders: {
         accountMode: {
           title: '账号类型',
           payg: '按量付费',
-          paygDesc: '消耗账户余额，按 Token 计费。余额不足自动冷却，充值后恢复。',
-          coding: 'Coding Plan',
-          codingDesc: '订阅制编程套餐，按 5 小时 / 每周滚动用量窗口限流。',
+          paygDesc: '使用按量 API Key，由供应商按 Token 计费。',
+          coding: 'Token Plan',
+          codingDesc: '订阅制套餐，按供应商定义的滚动用量窗口限流。',
+          codingMimoDesc: 'MiMo 订阅套餐。官方 API 暂不提供剩余额度查询，请在 MiMo 控制台查看。',
+          mimoUsageWarning: 'MiMo Token Plan Key 与区域绑定，请选择 Key 签发时对应的 CN、SGP 或 EU (AMS)；按量 Key 使用另一套独立端点。',
         },
         apiProtocol: {
           title: 'API 协议',
@@ -340,6 +344,8 @@ export default {
         balanceProbeTooltip: '请求供应商余额端点，查询账户余额',
         balanceLow: '余额不足',
         noBalanceEndpoint: '该平台暂无余额查询接口',
+    quotaConsoleOnly: '额度需到控制台查看',
+    quotaConsoleOnlyTooltip: 'MiMo 暂无公开额度 API，请前往官方控制台查看剩余 Credits。',
         resetSoon: '即将重置',
       },
       types: {
@@ -545,6 +551,7 @@ export default {
         partialSuccess: '操作部分完成：{success} 成功，{failed} 失败'
       },
       bulkEdit: {
+    cnConnectionProfileHint: '为全部所选供应商账号统一设置计费模式、API 协议及对应官方端点。',
         title: '批量编辑账号',
         selectionInfo: '已选择 {count} 个账号。只更新您勾选或填写的字段，未勾选的字段保持不变。',
         baseUrlPlaceholder: 'https://api.anthropic.com 或 https://api.openai.com',
@@ -887,20 +894,20 @@ export default {
       },
       autoPauseOnExpired: '过期自动暂停调度',
       autoPauseOnExpiredDesc: '启用后，账号过期将自动暂停调度',
-	  autoPause5hThreshold: '5h 用量阈值(%)',
-	  autoPause7dThreshold: '7d 用量阈值(%)',
-	  autoPauseThresholdHint: '留空或填 0 表示使用全局默认阈值（在运维设置中配置）；填具体值则覆盖全局默认。达到阈值后仅在调度时跳过账号，不修改 schedulable。',
-	  autoPause5hDisabled: '禁用 5h 自动暂停',
-	  autoPause7dDisabled: '禁用 7d 自动暂停',
-	  autoPauseDisabledHint: '开启后该账号永不进入自动暂停（即使全局默认阈值已配置）。',
-	  autoResetCredit: {
-	    title: '自动使用重置卡',
-	    hint: '仅在实际用量达到阈值时使用最早到期的可用卡；默认关闭。无卡或失败时账号保持暂停。',
-	    threshold5h: '5h 自动用卡阈值(%)',
-	    threshold7d: '7d 自动用卡阈值(%)',
-	    thresholdHint: '两个窗口独立判断，任一达到自身阈值即触发。可填写 0.1–100，默认均为 100。',
-	    thresholdInvalid: '自动使用重置卡阈值必须在 0.1% 到 100% 之间。'
-	  },
+    autoPause5hThreshold: '5h 用量阈值(%)',
+    autoPause7dThreshold: '7d 用量阈值(%)',
+    autoPauseThresholdHint: '留空或填 0 表示使用全局默认阈值（在运维设置中配置）；填具体值则覆盖全局默认。达到阈值后仅在调度时跳过账号，不修改 schedulable。',
+    autoPause5hDisabled: '禁用 5h 自动暂停',
+    autoPause7dDisabled: '禁用 7d 自动暂停',
+    autoPauseDisabledHint: '开启后该账号永不进入自动暂停（即使全局默认阈值已配置）。',
+    autoResetCredit: {
+      title: '自动使用重置卡',
+      hint: '仅在实际用量达到阈值时使用最早到期的可用卡；默认关闭。无卡或失败时账号保持暂停。',
+      threshold5h: '5h 自动用卡阈值(%)',
+      threshold7d: '7d 自动用卡阈值(%)',
+      thresholdHint: '两个窗口独立判断，任一达到自身阈值即触发。可填写 0.1–100，默认均为 100。',
+      thresholdInvalid: '自动使用重置卡阈值必须在 0.1% 到 100% 之间。'
+    },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: '配额控制',

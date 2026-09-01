@@ -32,6 +32,15 @@ func TestDetectModelPlatform(t *testing.T) {
 		{name: "moonshot prefix", model: "moonshot/moonshot-v1-32k", platform: PlatformKimi, ok: true},
 		{name: "zhipu", model: "glm-5.2", platform: PlatformZhipu, ok: true},
 		{name: "deepseek", model: "deepseek-v4-pro", platform: PlatformDeepseek, ok: true},
+		{name: "minimax", model: "MiniMax-M3", platform: PlatformMinimax, ok: true},
+		{name: "minimax provider prefix", model: "minimaxi/MiniMax-M2.7", platform: PlatformMinimax, ok: true},
+		{name: "mimo", model: "mimo-v2.5", platform: PlatformMiMo, ok: true},
+		{name: "mimo provider prefix", model: "xiaomi/mimo-v2.5-pro", platform: PlatformMiMo, ok: true},
+		{name: "hunyuan hy3", model: "hy3", platform: PlatformHunyuan, ok: true},
+		{name: "hunyuan preview", model: "hy4-preview", platform: PlatformHunyuan, ok: true},
+		{name: "hunyuan provider prefix", model: "tencent/hy3", platform: PlatformHunyuan, ok: true},
+		{name: "qwen", model: "qwen3.7-plus", platform: PlatformQwen, ok: true},
+		{name: "qwen provider prefix", model: "dashscope/qwen3.8-max", platform: PlatformQwen, ok: true},
 		{name: "unknown k3 alias", model: "k3-preview", ok: false},
 		{name: "unknown", model: "llama-4-maverick", ok: false},
 	}
@@ -67,13 +76,13 @@ func TestCompositeGroupSchedulerHasAllCanonicalPlatformBuckets(t *testing.T) {
 		platforms = append(platforms, platform)
 	}
 	require.ElementsMatch(t,
-		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek},
+		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMinimax, PlatformMiMo, PlatformHunyuan, PlatformQwen},
 		platforms,
 	)
 }
 
 func TestCompositeConcretePlatformsIncludeCNProviders(t *testing.T) {
-	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMinimax, PlatformMiMo, PlatformHunyuan, PlatformQwen} {
 		require.True(t, isConcreteRequestPlatform(platform))
 		require.True(t, canCopyAccountsFromGroupPlatform(PlatformComposite, platform))
 	}

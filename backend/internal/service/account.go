@@ -272,7 +272,7 @@ func (a *Account) IsGrokOAuth() bool {
 	return a.IsGrok() && a.Type == AccountTypeOAuth
 }
 
-// IsKimi / IsZhipu / IsDeepseek 标识国产 OpenAI 兼容供应商账号。
+// These helpers identify domestic OpenAI-compatible provider accounts.
 func (a *Account) IsKimi() bool {
 	return a.Platform == PlatformKimi
 }
@@ -285,6 +285,22 @@ func (a *Account) IsDeepseek() bool {
 	return a.Platform == PlatformDeepseek
 }
 
+func (a *Account) IsMinimax() bool {
+	return a.Platform == PlatformMinimax
+}
+
+func (a *Account) IsMiMo() bool {
+	return a.Platform == PlatformMiMo
+}
+
+func (a *Account) IsHunyuan() bool {
+	return a.Platform == PlatformHunyuan
+}
+
+func (a *Account) IsQwen() bool {
+	return a.Platform == PlatformQwen
+}
+
 // IsCNProvider 报告是否为国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）。
 func (a *Account) IsCNProvider() bool {
 	return a != nil && IsCNProvider(a.Platform)
@@ -294,8 +310,7 @@ func (a *Account) IsCNProvider() bool {
 // openai/grok 原生走 OpenAI 网关；kimi/zhipu/deepseek 同为 OpenAI Chat Completions
 // 兼容上游，也经 OpenAI 网关转发。
 func (a *Account) IsOpenAICompatible() bool {
-	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok ||
-		a.Platform == PlatformKimi || a.Platform == PlatformZhipu || a.Platform == PlatformDeepseek)
+	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || IsCNProvider(a.Platform))
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -1362,6 +1377,17 @@ func (a *Account) GetOpenAIBaseURL() string {
 		return DefaultZhipuPayGBaseURL
 	case PlatformDeepseek:
 		return DefaultDeepseekBaseURL
+	case PlatformMinimax:
+		return DefaultMinimaxBaseURL
+	case PlatformMiMo:
+		if a.GetAccountMode() == AccountModeCoding {
+			return DefaultMiMoCodingBaseURL
+		}
+		return DefaultMiMoPayGBaseURL
+	case PlatformHunyuan:
+		return DefaultHunyuanBaseURL
+	case PlatformQwen:
+		return DefaultQwenBaseURL
 	default:
 		return "https://api.openai.com"
 	}
@@ -1385,6 +1411,12 @@ func (a *Account) IsCodingPlan() bool {
 	return a.GetAccountMode() == AccountModeCoding
 }
 
+// SupportsNativeResponses reports whether this account's provider exposes a
+// native Responses endpoint. MiMo documents Responses for PAYG and Token Plan.
+func (a *Account) SupportsNativeResponses() bool {
+	return a != nil && SupportsNativeResponses(a.Platform)
+}
+
 // GetAPIProtocol 返回国产供应商账号的上游 API 协议。存储于
 // credentials["api_protocol"]；缺失或与平台不匹配时回退 chat_completions
 // （与既有行为完全一致）。responses 协议仅 deepseek 支持（官方原生 /responses
@@ -1393,13 +1425,16 @@ func (a *Account) GetAPIProtocol() string {
 	if a == nil || !a.IsCNProvider() {
 		return APIProtocolChatCompletions
 	}
+	if a.Platform == PlatformHunyuan || a.Platform == PlatformQwen {
+		return APIProtocolChatCompletions
+	}
 	switch strings.TrimSpace(a.GetCredential("api_protocol")) {
 	case APIProtocolAdaptive:
 		return APIProtocolAdaptive
 	case APIProtocolAnthropic:
 		return APIProtocolAnthropic
 	case APIProtocolResponses:
-		if a.Platform == PlatformDeepseek {
+		if a.SupportsNativeResponses() {
 			return APIProtocolResponses
 		}
 	case APIProtocolChatCompletions:
@@ -1448,6 +1483,13 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 			return DefaultZhipuAnthropicBaseURL
 		case PlatformDeepseek:
 			return DefaultDeepseekAnthropicBaseURL
+		case PlatformMinimax:
+			return DefaultMinimaxAnthropicBaseURL
+		case PlatformMiMo:
+			if a.GetAccountMode() == AccountModeCoding {
+				return DefaultMiMoCodingAnthropicBaseURL
+			}
+			return DefaultMiMoPayGAnthropicBaseURL
 		}
 	case APIProtocolChatCompletions, APIProtocolResponses:
 		switch a.Platform {
@@ -1463,6 +1505,17 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 			return DefaultZhipuPayGBaseURL
 		case PlatformDeepseek:
 			return DefaultDeepseekBaseURL
+		case PlatformMinimax:
+			return DefaultMinimaxBaseURL
+		case PlatformMiMo:
+			if a.GetAccountMode() == AccountModeCoding {
+				return DefaultMiMoCodingBaseURL
+			}
+			return DefaultMiMoPayGBaseURL
+		case PlatformHunyuan:
+			return DefaultHunyuanBaseURL
+		case PlatformQwen:
+			return DefaultQwenBaseURL
 		}
 	}
 	return ""
@@ -1499,6 +1552,13 @@ func (a *Account) GetAnthropicProtocolBaseURL() string {
 		return DefaultZhipuAnthropicBaseURL
 	case PlatformDeepseek:
 		return DefaultDeepseekAnthropicBaseURL
+	case PlatformMinimax:
+		return DefaultMinimaxAnthropicBaseURL
+	case PlatformMiMo:
+		if a.GetAccountMode() == AccountModeCoding {
+			return DefaultMiMoCodingAnthropicBaseURL
+		}
+		return DefaultMiMoPayGAnthropicBaseURL
 	default:
 		return ""
 	}
@@ -1526,6 +1586,17 @@ func (a *Account) GetOpenAIFormatBaseURL() string {
 		return DefaultZhipuPayGBaseURL
 	case PlatformDeepseek:
 		return DefaultDeepseekBaseURL
+	case PlatformMinimax:
+		return DefaultMinimaxBaseURL
+	case PlatformMiMo:
+		if a.GetAccountMode() == AccountModeCoding {
+			return DefaultMiMoCodingBaseURL
+		}
+		return DefaultMiMoPayGBaseURL
+	case PlatformHunyuan:
+		return DefaultHunyuanBaseURL
+	case PlatformQwen:
+		return DefaultQwenBaseURL
 	default:
 		return a.GetOpenAIBaseURL()
 	}
@@ -1553,6 +1624,10 @@ func (a *Account) GetCodingPlanProvider() string {
 		return PlatformKimi
 	case strings.Contains(baseURL, "bigmodel.cn"), strings.Contains(baseURL, "api.z.ai"):
 		return PlatformZhipu
+	case a.Platform == PlatformMinimax && strings.Contains(baseURL, "minimaxi.com"):
+		return PlatformMinimax
+	case a.Platform == PlatformMiMo && strings.Contains(baseURL, "xiaomimimo.com"):
+		return PlatformMiMo
 	default:
 		return ""
 	}

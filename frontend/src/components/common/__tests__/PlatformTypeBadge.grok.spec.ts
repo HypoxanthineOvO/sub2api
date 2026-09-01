@@ -114,3 +114,17 @@ describe('PlatformTypeBadge OpenAI authentication modes', () => {
     expect(wrapper.text()).toContain('OAuth')
   })
 })
+
+describe('PlatformTypeBadge domestic OpenAI-compatible providers', () => {
+  it.each([
+    ['hunyuan', 'Hunyuan'],
+    ['qwen', 'Qwen'],
+  ] as const)('labels %s without falling back to Gemini', (platform, label) => {
+    const wrapper = mount(PlatformTypeBadge, {
+      props: { platform, type: 'apikey' },
+    })
+
+    expect(wrapper.text()).toContain(label)
+    expect(wrapper.text()).not.toContain('Gemini')
+  })
+})

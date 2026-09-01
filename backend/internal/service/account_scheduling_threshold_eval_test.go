@@ -405,6 +405,32 @@ func TestEvaluateAccountSchedulingThreshold_GrokUsesConfiguredThresholds(t *test
 	require.True(t, wantUntil.Equal(*decision.Until))
 }
 
+func TestEvaluateAccountSchedulingThreshold_MiniMaxUsesLatestQuotaWindow(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
+	weeklyReset := now.Add(4 * 24 * time.Hour)
+	account := &Account{
+		Platform: PlatformMinimax,
+		Extra: map[string]any{
+			"minimax_usage_updated_at":    now.Add(-time.Minute).Format(time.RFC3339),
+			"minimax_5h_used_percent":     95.0,
+			"minimax_5h_reset_at":         now.Add(3 * time.Hour).Format(time.RFC3339),
+			"minimax_weekly_used_percent": 90.0,
+			"minimax_weekly_reset_at":     weeklyReset.Format(time.RFC3339),
+		},
+	}
+
+	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformMinimax: 80}, now)
+
+	require.True(t, decision.ShouldPause)
+	require.Equal(t, PlatformMinimax, decision.Platform)
+	require.Equal(t, "weekly", decision.Window)
+	require.Equal(t, 90.0, decision.UsedPercent)
+	require.NotNil(t, decision.Until)
+	require.True(t, weeklyReset.Equal(*decision.Until))
+}
+
 func TestEvaluateAccountSchedulingThreshold_GrokUsesOnlyHeaderQuotaWindow(t *testing.T) {
 	t.Parallel()
 	// Billing seven_day/thirty_day must not drive pause; only grok_sched_* may.

@@ -705,6 +705,8 @@ type TokenRefreshConfig struct {
 }
 
 type PricingConfig struct {
+	// CNYPerUSD converts official CNY rate cards into the USD billing ledger.
+	CNYPerUSD float64 `mapstructure:"cny_per_usd"`
 	// 价格数据远程URL（默认使用LiteLLM镜像）
 	RemoteURL string `mapstructure:"remote_url"`
 	// 哈希校验文件URL
@@ -2119,6 +2121,15 @@ func setDefaults() {
 		"api.moonshot.cn",
 		"open.bigmodel.cn",
 		"api.minimaxi.com",
+		"www.minimaxi.com",
+		"api.xiaomimimo.com",
+		"token-plan-cn.xiaomimimo.com",
+		"token-plan-sgp.xiaomimimo.com",
+		"token-plan-ams.xiaomimimo.com",
+		"api.lkeap.cloud.tencent.com",
+		"tokenhub.tencentmaas.com",
+		"tokenhub-intl.tencentmaas.com",
+		"dashscope.aliyuncs.com",
 		"generativelanguage.googleapis.com",
 		"cloudcode-pa.googleapis.com",
 		"*.openai.azure.com",
@@ -2355,6 +2366,7 @@ func setDefaults() {
 
 	// Pricing - 从 model-price-repo 同步模型定价和上下文窗口数据（固定到 commit，避免分支漂移）
 	viper.SetDefault("pricing.remote_url", "https://raw.githubusercontent.com/Wei-Shaw/model-price-repo/main/model_prices_and_context_window.json")
+	viper.SetDefault("pricing.cny_per_usd", 7.15)
 	viper.SetDefault("pricing.hash_url", "https://raw.githubusercontent.com/Wei-Shaw/model-price-repo/main/model_prices_and_context_window.sha256")
 	viper.SetDefault("pricing.data_dir", "./data")
 	viper.SetDefault("pricing.fallback_file", "./resources/model-pricing/model_prices_and_context_window.json")

@@ -104,7 +104,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		if !isResponsesShape {
 			return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 		}
-		if account.Platform != PlatformDeepseek {
+		if !account.SupportsNativeResponses() {
 			var responsesReq apicompat.ResponsesRequest
 			if err := json.Unmarshal(body, &responsesReq); err != nil {
 				return nil, fmt.Errorf("parse responses-shaped chat completions request: %w", err)
@@ -122,7 +122,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 			}
 			return s.forwardAsRawChatCompletions(ctx, c, account, chatBody, defaultMappedModel)
 		}
-		// DeepSeek 原生 Responses 请求继续走下方 Responses→Chat 回程转换。
+		// 原生 Responses 请求继续走下方 Responses→Chat 回程转换。
 	}
 
 	// 入口分流（国产供应商 Anthropic 协议）：上游为供应商原生 Anthropic 端点，
