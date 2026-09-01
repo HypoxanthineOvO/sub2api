@@ -120,7 +120,24 @@ bash deploy/native/build.sh
 sudo -n /usr/local/sbin/vsp-sub2api-deploy
 ```
 
-The sudoers rule permits only the no-argument wrapper. The wrapper and its
+The same installer adds a separate allocator-only command and a production unit
+drop-in. Allocator releases are content-addressed under
+`/opt/vsp-sub2api/allocator/releases`, with an independent atomic `current`
+symlink, so App blue-green releases cannot change the allocator version. The
+command switches that symlink, restarts only the allocator unit, then verifies
+the primary/fallback pool contract, per-slot raw probe values, all three Mihomo
+selectors, and that each live route has returned to PRIMARY. The stack target
+pulls the allocator in with `Wants=` (not `Requires=`), so restarting or rolling
+back the allocator can never stop PostgreSQL, Redis, or the proxy slots; the
+deployer additionally records stack-target liveness before deploying and
+restores the target if a deployment ever takes it down. Any failed
+verification restores the previous allocator release and restarts the allocator:
+
+```bash
+sudo -n /usr/local/sbin/vsp-sub2api-allocator-deploy
+```
+
+The sudoers rules permit only the two no-argument wrappers. The wrappers and their
 privileged dependencies are root-owned copies under `/usr/local`; editable
 repository scripts are never executed with passwordless root privileges. Run
 the installer again only when intentionally updating the privileged deployment

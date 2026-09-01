@@ -3,8 +3,11 @@ Description=VSP Sub2API native production stack
 Requires=vsp-postgresql@production.service
 Requires=vsp-redis@production.service
 Requires=vsp-mihomo-production@slot-a.service vsp-mihomo-production@slot-b.service vsp-mihomo-production@slot-c.service vsp-mihomo-production@slot-d.service vsp-mihomo-production@slot-e.service
-Requires=vsp-proxy-allocator@production.service
 Requires=vsp-selected-node@production.service
+# The allocator is restarted by deploy-proxy-allocator.sh; Requires= (and
+# BindsTo=) would propagate that stop/restart up to this target and take the
+# whole data plane down, so it is pulled in with Wants= instead.
+Wants=vsp-proxy-allocator@production.service
 After=network-online.target
 
 [Install]
