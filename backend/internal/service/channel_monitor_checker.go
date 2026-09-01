@@ -175,6 +175,8 @@ var providerAdapters = map[string]providerAdapter{
 	MonitorProviderKimi:     providerKimiChatAdapter,
 	MonitorProviderZhipu:    providerZhipuChatAdapter,
 	MonitorProviderDeepseek: providerDeepseekChatAdapter,
+	MonitorProviderMinimax:  providerMinimaxChatAdapter,
+	MonitorProviderMiMo:     providerMiMoChatAdapter,
 	MonitorProviderAnthropic: {
 		buildPath: func(string) string { return providerAnthropicPath },
 		buildBody: func(model, prompt string) ([]byte, error) {
@@ -226,6 +228,12 @@ var providerZhipuChatAdapter = newOpenAICompatibleChatAdapter(providerZhipuPath)
 //nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
 var providerDeepseekChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
 
+//nolint:gochecknoglobals // 静态只读适配器。
+var providerMinimaxChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
+
+//nolint:gochecknoglobals // 静态只读适配器。
+var providerMiMoChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
+
 func newOpenAICompatibleChatAdapter(path string) providerAdapter {
 	return providerAdapter{
 		buildPath: func(string) string { return path },
@@ -262,9 +270,21 @@ var providerOpenAIResponsesAdapter = providerAdapter{
 	textPath: "output.0.content.0.text",
 }
 
+// DeepSeek's official Responses endpoint omits the /v1 prefix. Its request,
+// response and Bearer authentication otherwise use the shared wire format.
+var providerDeepseekResponsesAdapter = providerAdapter{
+	buildPath:    func(string) string { return providerDeepseekResponsesPath },
+	buildBody:    providerOpenAIResponsesAdapter.buildBody,
+	buildHeaders: providerOpenAIResponsesAdapter.buildHeaders,
+	textPath:     providerOpenAIResponsesAdapter.textPath,
+}
+
 // providerAdapterFor 按 provider + api_mode 选择具体 adapter。
 func providerAdapterFor(provider, apiMode string) (providerAdapter, string, bool) {
-	if provider == MonitorProviderOpenAI && defaultAPIMode(apiMode) == MonitorAPIModeResponses {
+	if defaultAPIMode(apiMode) == MonitorAPIModeResponses && monitorProviderSupportsResponses(provider) {
+		if provider == MonitorProviderDeepseek {
+			return providerDeepseekResponsesAdapter, MonitorAPIModeResponses, true
+		}
 		return providerOpenAIResponsesAdapter, MonitorAPIModeResponses, true
 	}
 	adapter, ok := providerAdapters[provider]
@@ -298,7 +318,7 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	if err != nil {
 		return "", "", status, err
 	}
-	if provider == MonitorProviderOpenAI && apiMode == MonitorAPIModeResponses {
+	if apiMode == MonitorAPIModeResponses {
 		return extractOpenAIResponsesText(respBytes), string(respBytes), status, nil
 	}
 	return extractMonitorResponseText(adapter, respBytes), string(respBytes), status, nil
@@ -451,6 +471,9 @@ func buildRequestBody(adapter providerAdapter, provider, apiMode, model, prompt 
 var bodyMergeKeyDenyList = map[string]map[string]bool{
 	MonitorProviderOpenAI + ":" + MonitorAPIModeChatCompletions: {"model": true, "messages": true, "stream": true},
 	MonitorProviderOpenAI + ":" + MonitorAPIModeResponses:       {"model": true, "instructions": true, "input": true, "stream": true},
+	MonitorProviderDeepseek + ":" + MonitorAPIModeResponses:     {"model": true, "instructions": true, "input": true, "stream": true},
+	MonitorProviderMinimax + ":" + MonitorAPIModeResponses:      {"model": true, "instructions": true, "input": true, "stream": true},
+	MonitorProviderMiMo + ":" + MonitorAPIModeResponses:         {"model": true, "instructions": true, "input": true, "stream": true},
 	MonitorProviderGrok:      {"model": true, "messages": true, "stream": true},
 	MonitorProviderAnthropic: {"model": true, "messages": true},
 	MonitorProviderGemini:    {"contents": true},
@@ -458,6 +481,8 @@ var bodyMergeKeyDenyList = map[string]map[string]bool{
 	MonitorProviderKimi:     {"model": true, "messages": true, "stream": true},
 	MonitorProviderZhipu:    {"model": true, "messages": true, "stream": true},
 	MonitorProviderDeepseek: {"model": true, "messages": true, "stream": true},
+	MonitorProviderMinimax:  {"model": true, "messages": true, "stream": true},
+	MonitorProviderMiMo:     {"model": true, "messages": true, "stream": true},
 }
 
 func checkAPIMode(opts *CheckOptions) string {
@@ -468,7 +493,8 @@ func checkAPIMode(opts *CheckOptions) string {
 }
 
 func bodyMergeDenyKey(provider, apiMode string) string {
-	if provider == MonitorProviderOpenAI {
+	if provider == MonitorProviderOpenAI ||
+		(monitorProviderSupportsResponses(provider) && defaultAPIMode(apiMode) == MonitorAPIModeResponses) {
 		return provider + ":" + defaultAPIMode(apiMode)
 	}
 	return provider
@@ -479,7 +505,8 @@ func bodyMergeDenyKey(provider, apiMode string) string {
 func isOpenAICompatibleChatProvider(provider string) bool {
 	switch provider {
 	case MonitorProviderOpenAI, MonitorProviderGrok,
-		MonitorProviderKimi, MonitorProviderZhipu, MonitorProviderDeepseek:
+		MonitorProviderKimi, MonitorProviderZhipu, MonitorProviderDeepseek,
+		MonitorProviderMinimax, MonitorProviderMiMo:
 		return true
 	default:
 		return false
