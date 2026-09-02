@@ -155,6 +155,14 @@
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
 
+        <NewAPIManagementSettings
+          v-model:enabled="newAPIManagementEnabled"
+          v-model:management-base-url="newAPIManagementBaseUrl"
+          v-model:token="newAPIManagementToken"
+          :source-base-url="editBaseUrl"
+          :token-configured="newAPIManagementTokenConfigured"
+        />
+
         <!-- Model Restriction Section (不适用于 Antigravity) -->
         <div v-if="account.platform !== 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -2882,6 +2890,7 @@ import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import MiMoTokenPlanRegionPicker from '@/components/account/MiMoTokenPlanRegionPicker.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
+import NewAPIManagementSettings from '@/components/account/NewAPIManagementSettings.vue'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -2989,6 +2998,12 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const newAPIManagementEnabled = ref(false)
+const newAPIManagementBaseUrl = ref('')
+const newAPIManagementToken = ref('')
+const newAPIManagementTokenConfigured = computed(() =>
+  props.account?.credentials_status?.has_newapi_management_token === true
+)
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
 // account_mode 决定额度/余额监控路径，api_protocol 决定转发端点与格式；
@@ -3716,6 +3731,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 
   // Load intercept warmup requests setting (applies to all account types)
   const credentials = newAccount.credentials as Record<string, unknown> | undefined
+  newAPIManagementEnabled.value = credentials?.newapi_management_enabled === true
+  newAPIManagementBaseUrl.value = typeof credentials?.newapi_management_base_url === 'string'
+    ? credentials.newapi_management_base_url
+    : ''
+  newAPIManagementToken.value = ''
   interceptWarmupRequests.value = credentials?.intercept_warmup_requests === true
   autoPauseOnExpired.value = newAccount.auto_pause_on_expired === true
   editVertexProjectId.value = ''
@@ -4610,7 +4630,22 @@ const handleClose = () => {
 const submitUpdateAccount = async (accountID: number, updatePayload: Record<string, unknown>) => {
   submitting.value = true
   try {
-    const updatedAccount = await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))
+    let updatedAccount = await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))
+    const credentials = updatePayload.credentials as Record<string, unknown> | undefined
+    if (credentials?.newapi_management_enabled === true) {
+      try {
+        const snapshot = await adminAPI.accounts.probeNewAPIManagement(accountID)
+        updatedAccount = {
+          ...updatedAccount,
+          extra: { ...(updatedAccount.extra || {}), newapi_management_snapshot: snapshot }
+        }
+        if (snapshot.status === 'failed') {
+          appStore.showWarning(snapshot.error || t('admin.accounts.newapiManagement.probeFailedAfterSave'))
+        }
+      } catch {
+        appStore.showWarning(t('admin.accounts.newapiManagement.probeFailedAfterSave'))
+      }
+    }
     appStore.showSuccess(t('admin.accounts.accountUpdated'))
     emit('updated', updatedAccount)
     handleClose()
@@ -4638,6 +4673,16 @@ const handleSubmit = async () => {
   if (form.status !== 'active' && form.status !== 'inactive' && form.status !== 'error') {
     appStore.showError(t('admin.accounts.pleaseSelectStatus'))
     return
+  }
+  if (props.account.type === 'apikey' && newAPIManagementEnabled.value) {
+    if (!newAPIManagementBaseUrl.value.trim()) {
+      appStore.showError(t('admin.accounts.newapiManagement.baseUrlRequired'))
+      return
+    }
+    if (!newAPIManagementTokenConfigured.value && !newAPIManagementToken.value.trim()) {
+      appStore.showError(t('admin.accounts.newapiManagement.tokenRequired'))
+      return
+    }
   }
   if (autoResetCreditEnabled.value) {
     const thresholds = [autoResetCredit5hThreshold.value, autoResetCredit7dThreshold.value]
@@ -4711,6 +4756,16 @@ const handleSubmit = async () => {
       } else if (!hasExistingApiKey) {
         appStore.showError(t('admin.accounts.apiKeyIsRequired'))
         return
+      }
+
+      newCredentials.newapi_management_enabled = newAPIManagementEnabled.value
+      if (newAPIManagementEnabled.value) {
+        newCredentials.newapi_management_base_url = newAPIManagementBaseUrl.value.trim()
+        if (newAPIManagementToken.value.trim()) {
+          newCredentials.newapi_management_token = newAPIManagementToken.value.trim()
+        }
+      } else {
+        delete newCredentials.newapi_management_base_url
       }
 
       // Add model mapping if configured（OpenAI 开启自动透传时保留现有映射，不再编辑）

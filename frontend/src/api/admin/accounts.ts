@@ -24,7 +24,8 @@ import type {
   UpstreamBillingProbeResult,
   UpstreamBillingProbeSettings,
   OllamaCloudUsageSettings,
-  OllamaCloudUsageState
+  OllamaCloudUsageState,
+  NewAPIManagementSnapshot
 } from '@/types'
 
 /**
@@ -985,6 +986,13 @@ export async function refreshOllamaCloudUsage(id: number): Promise<OllamaCloudUs
   return data
 }
 
+export async function probeNewAPIManagement(id: number): Promise<NewAPIManagementSnapshot> {
+  const { data } = await apiClient.post<NewAPIManagementSnapshot>(
+    `/admin/accounts/${id}/management-probe`
+  )
+  return data
+}
+
 export const accountsAPI = {
   list,
   listWithEtag,
@@ -1045,7 +1053,8 @@ export const accountsAPI = {
   saveOllamaCloudUsageSession,
   deleteOllamaCloudUsageSession,
   setOllamaCloudUsageAutoRefresh,
-  refreshOllamaCloudUsage
+  refreshOllamaCloudUsage,
+  probeNewAPIManagement
 }
 
 export default accountsAPI

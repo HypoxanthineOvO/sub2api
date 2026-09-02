@@ -5,12 +5,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const {
   createAccountMock,
   probeUpstreamBillingMock,
+  probeNewAPIManagementMock,
   importCodexSessionMock,
   createOpenAICodexPATMock,
   authIsSimpleMode,
 } = vi.hoisted(() => ({
   createAccountMock: vi.fn(),
   probeUpstreamBillingMock: vi.fn(),
+  probeNewAPIManagementMock: vi.fn(),
   importCodexSessionMock: vi.fn(),
   createOpenAICodexPATMock: vi.fn(),
   authIsSimpleMode: { value: true },
@@ -37,6 +39,7 @@ vi.mock('@/api/admin', () => ({
     accounts: {
       create: createAccountMock,
       probeUpstreamBilling: probeUpstreamBillingMock,
+      probeNewAPIManagement: probeNewAPIManagementMock,
       checkMixedChannelRisk: vi.fn().mockResolvedValue({ has_risk: false }),
       importCodexSession: importCodexSessionMock,
       createOpenAICodexPAT: createOpenAICodexPATMock,
@@ -190,6 +193,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     authIsSimpleMode.value = true
     createAccountMock.mockReset().mockResolvedValue({ id: 42, platform: 'openai', type: 'apikey' })
     probeUpstreamBillingMock.mockReset().mockResolvedValue({})
+    probeNewAPIManagementMock.mockReset().mockResolvedValue({ status: 'ok', balance_usd: 2 })
     importCodexSessionMock.mockReset().mockResolvedValue({
       created: 1,
       updated: 0,
@@ -213,6 +217,25 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(wrapper.find('[data-testid="openai-long-context-billing-toggle"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="create-openai-ws-mode"]').exists()).toBe(true)
+  })
+
+  it('stores NewAPI management settings and probes after creating the account', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('relay account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('model-api-key')
+    await wrapper.get('[data-testid="newapi-management-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="newapi-management-token"]').setValue('management-token')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials).toMatchObject({
+      newapi_management_enabled: true,
+      newapi_management_base_url: 'https://api.openai.com',
+      newapi_management_token: 'management-token'
+    })
+    expect(probeNewAPIManagementMock).toHaveBeenCalledWith(42)
   })
 
   it('keeps the account toggle when any selected group disables tier pricing', async () => {

@@ -1110,6 +1110,29 @@ export interface OllamaCloudUsageSettings {
   debounce_minutes: number
 }
 
+export interface NewAPIManagementSnapshot {
+  status?: 'ok' | 'failed'
+  balance_usd?: number
+  used_usd?: number
+  request_count?: number
+  prompt_tokens?: number
+  completion_tokens?: number
+  cache_tokens?: number
+  cache_creation_tokens?: number
+  total_tokens?: number
+  fetched_at?: string
+  last_attempt_at?: string
+  http_status?: number
+  currency?: string
+  error?: string
+  // Compatibility with raw/legacy snapshots while the backend normalizes them.
+  balance?: number
+  used?: number
+  quota?: number
+  used_quota?: number
+  quota_per_unit?: number
+}
+
 export interface Account {
   id: number
   name: string

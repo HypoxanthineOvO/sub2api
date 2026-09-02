@@ -1369,6 +1369,13 @@
           <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
         </div>
 
+        <NewAPIManagementSettings
+          v-model:enabled="newAPIManagementEnabled"
+          v-model:management-base-url="newAPIManagementBaseUrl"
+          v-model:token="newAPIManagementToken"
+          :source-base-url="apiKeyBaseUrl"
+        />
+
         <!-- 上游倍率自动探测：全部 API-key 平台可用（所在区块已限定 apikey 类型） -->
         <div
           class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -3863,6 +3870,7 @@ import {
   type OpenAIWSMode
 } from '@/utils/openaiWsMode'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
+import NewAPIManagementSettings from './NewAPIManagementSettings.vue'
 
 // Type for exposed OAuthAuthorizationFlow component
 // Note: defineExpose automatically unwraps refs, so we use the unwrapped types
@@ -4023,6 +4031,9 @@ const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_acco
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
+const newAPIManagementEnabled = ref(false)
+const newAPIManagementBaseUrl = ref('')
+const newAPIManagementToken = ref('')
 const upstreamBillingAutoProbeEnabled = ref(true)
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）账号类型、API 协议与端点 ──
@@ -5095,6 +5106,16 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
         appStore.showWarning(t('admin.accounts.upstreamBilling.probeFailed'))
       }
     }
+    if (payload.credentials.newapi_management_enabled === true) {
+      try {
+        const snapshot = await adminAPI.accounts.probeNewAPIManagement(account.id)
+        if (snapshot.status === 'failed') {
+          appStore.showWarning(snapshot.error || t('admin.accounts.newapiManagement.probeFailedAfterSave'))
+        }
+      } catch {
+        appStore.showWarning(t('admin.accounts.newapiManagement.probeFailedAfterSave'))
+      }
+    }
     appStore.showSuccess(t('admin.accounts.accountCreated'))
     emit('created')
     handleClose()
@@ -5138,6 +5159,9 @@ const resetForm = () => {
   mimoTokenPlanRegion.value = 'cn'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  newAPIManagementEnabled.value = false
+  newAPIManagementBaseUrl.value = ''
+  newAPIManagementToken.value = ''
   upstreamBillingAutoProbeEnabled.value = true
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
@@ -5586,6 +5610,16 @@ const handleSubmit = async () => {
     appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
     return
   }
+  if (newAPIManagementEnabled.value) {
+    if (!newAPIManagementBaseUrl.value.trim()) {
+      appStore.showError(t('admin.accounts.newapiManagement.baseUrlRequired'))
+      return
+    }
+    if (!newAPIManagementToken.value.trim()) {
+      appStore.showError(t('admin.accounts.newapiManagement.tokenRequired'))
+      return
+    }
+  }
 
   // Determine default base URL based on platform
   const defaultBaseUrl =
@@ -5601,6 +5635,11 @@ const handleSubmit = async () => {
   const credentials: Record<string, unknown> = {
     base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl,
     api_key: apiKeyValue.value.trim()
+  }
+  if (newAPIManagementEnabled.value) {
+    credentials.newapi_management_enabled = true
+    credentials.newapi_management_base_url = newAPIManagementBaseUrl.value.trim()
+    credentials.newapi_management_token = newAPIManagementToken.value.trim()
   }
   if (form.platform === 'gemini') {
     credentials.tier_id = geminiTierAIStudio.value

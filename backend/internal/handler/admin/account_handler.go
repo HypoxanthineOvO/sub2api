@@ -65,6 +65,7 @@ type AccountHandler struct {
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
 	selectedNodeEnricher    service.SelectedNodeEnricher
+	newAPIManagement        *service.NewAPIManagementService
 }
 
 // SetUpstreamBillingProbeService attaches the optional remote billing probe service.
@@ -74,6 +75,30 @@ func (h *AccountHandler) SetUpstreamBillingProbeService(probe *service.UpstreamB
 
 func (h *AccountHandler) SetOllamaCloudUsageService(usage *service.OllamaCloudUsageService) {
 	h.ollamaCloudUsage = usage
+}
+
+func (h *AccountHandler) SetNewAPIManagementService(management *service.NewAPIManagementService) {
+	h.newAPIManagement = management
+}
+
+// ProbeNewAPIManagement refreshes the optional NewAPI management snapshot.
+// POST /api/v1/admin/accounts/:id/management-probe
+func (h *AccountHandler) ProbeNewAPIManagement(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h.newAPIManagement == nil {
+		response.Error(c, http.StatusServiceUnavailable, "NewAPI management service is unavailable")
+		return
+	}
+	snapshot, err := h.newAPIManagement.ProbeAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, snapshot)
 }
 
 // NewAccountHandler creates a new admin account handler

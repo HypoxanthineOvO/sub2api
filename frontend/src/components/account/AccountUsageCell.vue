@@ -568,6 +568,11 @@
 
   <!-- Non-OAuth/Setup-Token accounts -->
   <div ref="rootRef" v-else>
+    <NewAPIManagementCell
+      :account="account"
+      class="mb-1"
+      @updated="handleNewAPIManagementUpdated"
+    />
     <!-- Gemini API Key accounts: show quota info -->
     <AccountQuotaInfo v-if="account.platform === 'gemini'" :account="account" />
     <!-- Key/Bedrock accounts: show today stats + optional quota bars -->
@@ -635,7 +640,7 @@
 
       <!-- No data at all -->
       <div
-        v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !account.ollama_cloud_usage?.eligible"
+        v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !account.ollama_cloud_usage?.eligible && !newAPIManagementConfigured"
         class="text-xs text-gray-400"
       >-</div>
     </div>
@@ -657,6 +662,7 @@ import GrokQuotaProbeCell from './GrokQuotaProbeCell.vue'
 import CNProviderQuotaCell from './CNProviderQuotaCell.vue'
 import CNProviderBalanceCell from './CNProviderBalanceCell.vue'
 import OllamaCloudUsageCell from './OllamaCloudUsageCell.vue'
+import NewAPIManagementCell from './NewAPIManagementCell.vue'
 import {
   cnQuotaCellVisible as cnQuotaCellVisibleFn,
   cnBalanceCellVisible as cnBalanceCellVisibleFn,
@@ -774,6 +780,10 @@ const quotaConsoleOnly = computed(() =>
 )
 const cnQuotaCellVisible = computed(() => cnQuotaCellVisibleFn(props.account.platform, cnAccountMode.value))
 const cnBalanceCellVisible = computed(() => cnBalanceCellVisibleFn(props.account.platform, cnAccountMode.value))
+const newAPIManagementConfigured = computed(() =>
+  props.account.credentials?.newapi_management_enabled === true &&
+  props.account.credentials_status?.has_newapi_management_token === true
+)
 
 const isBatchManaged = computed(() => typeof props.requestBatchedUsage === 'function')
 
@@ -1554,6 +1564,10 @@ const handleQuotaResetAccountUpdated = (account: Account) => {
 
 const handleOllamaCloudUsageUpdated = (state: NonNullable<Account['ollama_cloud_usage']>) => {
   emit('account-updated', { ...props.account, ollama_cloud_usage: state })
+}
+
+const handleNewAPIManagementUpdated = (account: Account) => {
+  emit('account-updated', account)
 }
 
 // ===== Key account today stats formatters =====

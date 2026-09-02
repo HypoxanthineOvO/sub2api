@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 
-const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
+const { updateAccountMock, checkMixedChannelRiskMock, probeNewAPIManagementMock, authIsSimpleMode } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
   checkMixedChannelRiskMock: vi.fn(),
+  probeNewAPIManagementMock: vi.fn(),
   authIsSimpleMode: { value: true }
 }))
 
@@ -12,7 +13,8 @@ vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError: vi.fn(),
     showSuccess: vi.fn(),
-    showInfo: vi.fn()
+    showInfo: vi.fn(),
+    showWarning: vi.fn()
   })
 }))
 
@@ -28,7 +30,8 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
       update: updateAccountMock,
-      checkMixedChannelRisk: checkMixedChannelRiskMock
+      checkMixedChannelRisk: checkMixedChannelRiskMock,
+      probeNewAPIManagement: probeNewAPIManagementMock
     },
     settings: {
       getWebSearchEmulationConfig: vi.fn().mockResolvedValue({ enabled: false, providers: [] }),
@@ -346,6 +349,34 @@ function mountModal(account = buildAccount()) {
 describe('EditAccountModal', () => {
   beforeEach(() => {
     authIsSimpleMode.value = true
+  })
+
+  it('keeps an existing management token blank and probes after update', async () => {
+    const account = buildAccount()
+    account.credentials = {
+      base_url: 'https://aimoniker.top/v1',
+      newapi_management_enabled: true,
+      newapi_management_base_url: 'https://aimoniker.top'
+    }
+    account.credentials_status = { has_api_key: true, has_newapi_management_token: true }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    probeNewAPIManagementMock.mockReset().mockResolvedValue({ status: 'ok', balance_usd: 2 })
+    const wrapper = mountModal(account)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
+    expect(credentials).toMatchObject({
+      newapi_management_enabled: true,
+      newapi_management_base_url: 'https://aimoniker.top'
+    })
+    expect(credentials).not.toHaveProperty('newapi_management_token')
+    expect(probeNewAPIManagementMock).toHaveBeenCalledWith(account.id)
+    expect(wrapper.emitted('updated')?.[0]?.[0]?.extra?.newapi_management_snapshot).toMatchObject({
+      balance_usd: 2
+    })
   })
 
   it('rehydrates and switches the complete MiMo Token Plan regional endpoint group', async () => {
