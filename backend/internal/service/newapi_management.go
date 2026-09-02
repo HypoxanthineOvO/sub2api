@@ -20,7 +20,10 @@ const (
 	NewAPIManagementTokenCredentialKey   = "newapi_management_token"
 	NewAPIManagementSnapshotExtraKey     = "newapi_management_snapshot"
 
-	newAPIManagementRequestTimeout = 10 * time.Second
+	// NewAPI /api/status responses can arrive promptly but finish slowly behind
+	// some relay/CDN stacks. This budget covers all three sequential read-only
+	// requests without affecting inference request timeouts.
+	newAPIManagementRequestTimeout = 30 * time.Second
 	newAPIManagementMaxBodyBytes   = 64 * 1024
 )
 
