@@ -1372,11 +1372,18 @@ func TestFetchCodexModelsManifestPassthrough(t *testing.T) {
 		t.Fatalf("FetchCodexModelsManifest returned error: %v", err)
 	}
 
-	if string(manifest.Body) != manifestBody {
-		t.Errorf("body not passed through verbatim: got %q", manifest.Body)
+	var normalizedBody map[string]any
+	if err := json.Unmarshal(manifest.Body, &normalizedBody); err != nil {
+		t.Fatalf("manifest body is invalid JSON: %v", err)
 	}
-	if manifest.ETag != `W/"abc123"` {
-		t.Errorf("etag not passed through: got %q", manifest.ETag)
+	if got := normalizedBody["models"].([]any)[0].(map[string]any)["slug"]; got != "gpt-5.5" {
+		t.Errorf("model slug: got %v", got)
+	}
+	if got := normalizedBody["models"].([]any)[0].(map[string]any)["max_context_window"]; got != float64(openAILongContextWindow) {
+		t.Errorf("max context window: got %v", got)
+	}
+	if manifest.ETag != codexModelsManifestBodyETag(manifest.Body) {
+		t.Errorf("etag should match normalized body: got %q", manifest.ETag)
 	}
 	if gotAuth != "Bearer test-access-token" {
 		t.Errorf("authorization header: got %q", gotAuth)
@@ -1564,8 +1571,8 @@ func TestFetchCodexModelsManifestNotModified(t *testing.T) {
 	if !manifest.NotModified {
 		t.Error("expected NotModified to be true")
 	}
-	if gotIfNoneMatch != `W/"abc123"` {
-		t.Errorf("if-none-match header: got %q", gotIfNoneMatch)
+	if gotIfNoneMatch != "" {
+		t.Errorf("OAuth requests must not forward client if-none-match: got %q", gotIfNoneMatch)
 	}
 }
 
@@ -1982,7 +1989,7 @@ func TestFetchCodexModelsManifestAPIKeyDisablesResponsesLiteForAffectedModels(t 
 	s := newCodexModelsAPIKeyTestService(upstream)
 	manifest, err := s.FetchCodexModelsManifest(context.Background(), newCodexModelsAPIKeyTestAccount("https://upstream.example"), "0.145.0", "")
 	require.NoError(t, err)
-	require.JSONEq(t, `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":false},{"slug":"gpt-5.6-codex","use_responses_lite":true}],"metadata":{"version":1}}`, string(manifest.Body))
+	require.JSONEq(t, `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":false,"max_context_window":1050000},{"slug":"gpt-5.6-codex","use_responses_lite":true}],"metadata":{"version":1}}`, string(manifest.Body))
 	require.Equal(t, codexModelsManifestBodyETag(manifest.Body), manifest.ETag)
 	require.Equal(t, `"upstream-strong"`, manifest.upstreamETag)
 
@@ -2005,7 +2012,7 @@ func TestFetchCodexModelsManifestOAuthPreservesResponsesLite(t *testing.T) {
 	s := &OpenAIGatewayService{}
 	manifest, err := s.FetchCodexModelsManifest(context.Background(), newCodexModelsTestAccount(), "0.145.0", "")
 	require.NoError(t, err)
-	require.Equal(t, manifestBody, string(manifest.Body))
+	require.JSONEq(t, `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":true,"max_context_window":1050000}]}`, string(manifest.Body))
 }
 
 func TestConvertOpenAIModelListToCompleteCodexManifest(t *testing.T) {
@@ -2112,7 +2119,12 @@ func TestFetchCodexModelsManifestAcceptsConfiguredLimitAboveLegacyBoundary(t *te
 	s.cfg.Gateway.ModelsListReadMaxBytes = 16 << 20
 	manifest, err := s.FetchCodexModelsManifest(context.Background(), newCodexModelsTestAccount(), "0.144.0", "")
 	require.NoError(t, err)
-	require.True(t, bytes.Equal([]byte(manifestBody), manifest.Body), "manifest body must be returned intact")
+	var normalized map[string]any
+	require.NoError(t, json.Unmarshal(manifest.Body, &normalized))
+	models := normalized["models"].([]any)
+	require.Equal(t, "gpt-5.6", models[0].(map[string]any)["slug"])
+	require.Equal(t, float64(openAILongContextWindow), models[0].(map[string]any)["max_context_window"])
+	require.Greater(t, len(manifest.Body), 8<<20)
 }
 
 func TestFetchCodexModelsManifestRejectsInvalidEnvelope(t *testing.T) {
@@ -2182,9 +2194,7 @@ func TestFetchCodexModelsManifestAPIKeyDoesNotCacheInvalidEnvelope(t *testing.T)
 	if err != nil {
 		t.Fatalf("second fetch returned error: %v", err)
 	}
-	if got, want := string(manifest.Body), `{"models":[{"slug":"gpt-5.6"}]}`; got != want {
-		t.Errorf("body: got %q, want %q", got, want)
-	}
+	require.JSONEq(t, `{"models":[{"slug":"gpt-5.6","max_context_window":1050000}]}`, string(manifest.Body))
 	if got := calls.Load(); got != 2 {
 		t.Errorf("upstream calls: got %d, want 2", got)
 	}
@@ -2268,9 +2278,7 @@ func TestFetchCodexModelsManifestAPIKeySharedRefreshSurvivesCallerCancellation(t
 		if result.err != nil {
 			t.Fatalf("second caller returned error: %v", result.err)
 		}
-		if string(result.manifest.Body) != manifestBody {
-			t.Errorf("second caller body: got %q", result.manifest.Body)
-		}
+		require.JSONEq(t, `{"models":[{"slug":"gpt-5.6","max_context_window":1050000}]}`, string(result.manifest.Body))
 	case <-time.After(time.Second):
 		t.Fatal("second caller did not receive shared refresh result")
 	}
@@ -2667,9 +2675,7 @@ func TestFetchCodexModelsManifestAPIKeyRevalidatesStaleETag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stale fetch returned error: %v", err)
 	}
-	if got := string(manifest.Body); got != `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":false}]}` {
-		t.Fatalf("stale body: got %q", got)
-	}
+	require.JSONEq(t, `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":false,"max_context_window":1050000}]}`, string(manifest.Body))
 	select {
 	case <-refreshDone:
 	case <-time.After(time.Second):
@@ -2693,9 +2699,10 @@ func TestFetchCodexModelsManifestAPIKeyRevalidatesStaleETag(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	manifest, err = s.FetchCodexModelsManifest(context.Background(), account, "0.144.0", "")
-	if err != nil || string(manifest.Body) != `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":false}]}` {
+	if err != nil {
 		t.Fatalf("renewed cached manifest: body=%q err=%v", manifest.Body, err)
 	}
+	require.JSONEq(t, `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":false,"max_context_window":1050000}]}`, string(manifest.Body))
 	if got := calls.Load(); got != 2 {
 		t.Errorf("upstream calls: got %d, want 2", got)
 	}
