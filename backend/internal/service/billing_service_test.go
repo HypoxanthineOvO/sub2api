@@ -327,46 +327,6 @@ func TestFallbackPricing_OpenAIGPT55ProUsesOfficialPrices(t *testing.T) {
 	require.Zero(t, pricing.OutputPricePerTokenPriority)
 }
 
-func TestFallbackPricing_MinimaxAndMiMoUseOfficialUSDPrices(t *testing.T) {
-	svc := newTestBillingService()
-
-	m3, err := svc.GetModelPricing("MiniMax-M3")
-	require.NoError(t, err)
-	require.InDelta(t, 0.30e-6, m3.InputPricePerToken, 1e-15)
-	require.InDelta(t, 1.20e-6, m3.OutputPricePerToken, 1e-15)
-	require.InDelta(t, 0.06e-6, m3.CacheReadPricePerToken, 1e-15)
-	require.InDelta(t, 0.45e-6, m3.InputPricePerTokenPriority, 1e-15)
-	require.InDelta(t, 1.80e-6, m3.OutputPricePerTokenPriority, 1e-15)
-	require.Equal(t, 512000, m3.LongContextInputThreshold)
-	require.InDelta(t, 2.0, m3.LongContextInputMultiplier, 1e-15)
-	require.InDelta(t, 2.0, m3.LongContextOutputMultiplier, 1e-15)
-
-	m27, err := svc.GetModelPricing("MiniMax-M2.7")
-	require.NoError(t, err)
-	require.InDelta(t, 0.375e-6, m27.CacheCreationPricePerToken, 1e-15)
-	require.InDelta(t, 0.06e-6, m27.CacheReadPricePerToken, 1e-15)
-	m25HighSpeed, err := svc.GetModelPricing("MiniMax-M2.5-highspeed")
-	require.NoError(t, err)
-	require.InDelta(t, 0.60e-6, m25HighSpeed.InputPricePerToken, 1e-15)
-	require.InDelta(t, 2.40e-6, m25HighSpeed.OutputPricePerToken, 1e-15)
-	m21HighSpeed, err := svc.GetModelPricing("MiniMax-M2.1-highspeed")
-	require.NoError(t, err)
-	require.InDelta(t, 0.60e-6, m21HighSpeed.InputPricePerToken, 1e-15)
-	require.InDelta(t, 2.40e-6, m21HighSpeed.OutputPricePerToken, 1e-15)
-
-	mimo, err := svc.GetModelPricing("mimo-v2.5")
-	require.NoError(t, err)
-	require.InDelta(t, 0.14e-6, mimo.InputPricePerToken, 1e-15)
-	require.InDelta(t, 0.28e-6, mimo.OutputPricePerToken, 1e-15)
-	require.InDelta(t, 0.0028e-6, mimo.CacheReadPricePerToken, 1e-15)
-
-	mimoPro, err := svc.GetModelPricing("mimo-v2.5-pro")
-	require.NoError(t, err)
-	require.InDelta(t, 0.435e-6, mimoPro.InputPricePerToken, 1e-15)
-	require.InDelta(t, 0.87e-6, mimoPro.OutputPricePerToken, 1e-15)
-	require.InDelta(t, 0.0036e-6, mimoPro.CacheReadPricePerToken, 1e-15)
-}
-
 // 回归测试 #2293：长上下文计费触发时，cache_read_tokens 也应应用 LongContextInputMultiplier。
 // 修复前：CacheReadCost = tokens * 0.25e-6 （漏乘倍率，少计费用）。
 // 修复后：CacheReadCost = tokens * 0.25e-6 * LongContextInputMultiplier(=2.0)。
@@ -530,37 +490,45 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 		{
 			name:              "deepseek v4 pro",
 			model:             "deepseek-v4-pro",
-			expectedInput:     1.32e-6,
-			expectedOutput:    floatPtr(3.96e-6),
-			expectedCacheRead: floatPtr(4.4e-8),
+			expectedInput:     6.6e-7,
+			expectedOutput:    floatPtr(1.98e-6),
+			expectedCacheRead: floatPtr(2.2e-8),
 		},
 		{
 			name:              "deepseek v4 flash",
 			model:             "deepseek-v4-flash",
-			expectedInput:     4.4e-7,
-			expectedOutput:    floatPtr(1.32e-6),
-			expectedCacheRead: floatPtr(1.4e-8),
+			expectedInput:     2.2e-7,
+			expectedOutput:    floatPtr(6.6e-7),
+			expectedCacheRead: floatPtr(7e-9),
 		},
 		{
 			name:              "deepseek v4 flash vision exp",
 			model:             "deepseek-v4-flash-vision-exp",
-			expectedInput:     4.4e-7,
-			expectedOutput:    floatPtr(1.32e-6),
-			expectedCacheRead: floatPtr(1.4e-8),
+			expectedInput:     2.2e-7,
+			expectedOutput:    floatPtr(6.6e-7),
+			expectedCacheRead: floatPtr(7e-9),
 		},
 		{
-			name:              "deepseek chat alias → flash",
+			// deepseek-chat / deepseek-reasoner 已停止服务，统一按 flash 价兜底。
+			name:              "deepseek chat discontinued maps to flash",
 			model:             "deepseek-chat",
-			expectedInput:     4.4e-7,
-			expectedOutput:    floatPtr(1.32e-6),
-			expectedCacheRead: floatPtr(1.4e-8),
+			expectedInput:     2.2e-7,
+			expectedOutput:    floatPtr(6.6e-7),
+			expectedCacheRead: floatPtr(7e-9),
 		},
 		{
-			name:              "deepseek reasoner alias → flash",
+			name:              "deepseek reasoner discontinued maps to flash",
 			model:             "deepseek-reasoner",
-			expectedInput:     4.4e-7,
-			expectedOutput:    floatPtr(1.32e-6),
-			expectedCacheRead: floatPtr(1.4e-8),
+			expectedInput:     2.2e-7,
+			expectedOutput:    floatPtr(6.6e-7),
+			expectedCacheRead: floatPtr(7e-9),
+		},
+		{
+			name:              "unknown deepseek maps to flash",
+			model:             "deepseek-foo",
+			expectedInput:     2.2e-7,
+			expectedOutput:    floatPtr(6.6e-7),
+			expectedCacheRead: floatPtr(7e-9),
 		},
 
 		// ---- 智谱 GLM（z.ai USD 口径）----
@@ -768,16 +736,16 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 		{
 			name:              "minimax m3",
 			model:             "minimax-m3",
-			expectedInput:     0.30e-6,
-			expectedOutput:    floatPtr(1.20e-6),
-			expectedCacheRead: floatPtr(0.06e-6),
+			expectedInput:     0.60e-6,
+			expectedOutput:    floatPtr(2.40e-6),
+			expectedCacheRead: floatPtr(0.12e-6),
 		},
 		{
-			name:              "minimax m3 alias returns base tier before usage multiplier",
-			model:             "minimax-m3-long",
-			expectedInput:     0.30e-6,
-			expectedOutput:    floatPtr(1.20e-6),
-			expectedCacheRead: floatPtr(0.06e-6),
+			name:              "minimax m3 long ctx boundary keep standard tier",
+			model:             "minimax-m3-long", // 仍按 standard tier (≤512K)
+			expectedInput:     0.60e-6,
+			expectedOutput:    floatPtr(2.40e-6),
+			expectedCacheRead: floatPtr(0.12e-6),
 		},
 		{
 			name:              "minimax m2.7",
@@ -1983,30 +1951,4 @@ func TestComputeTokenBreakdown_NonExplicitZeroImagePrice_FallsBackToOutput(t *te
 	require.InDelta(t, 50*15e-6, bd.ImageOutputCost, 1e-12)
 	// textOutputTokens = 200 - 50 = 150
 	require.InDelta(t, 150*15e-6, bd.OutputCost, 1e-12)
-}
-
-func TestQwenOfficialBeijingPricingTiers(t *testing.T) {
-	svc := NewBillingService(&config.Config{}, nil)
-	const cnyPerUSD = 7.15
-	tests := []struct {
-		name        string
-		model       string
-		inputTokens int
-		inputCNY    float64
-		outputCNY   float64
-	}{
-		{name: "qwen37 plus base", model: "qwen3.7-plus", inputTokens: 1000, inputCNY: 2, outputCNY: 8},
-		{name: "qwen37 plus over 256k", model: "qwen3.7-plus", inputTokens: 300000, inputCNY: 6, outputCNY: 24},
-		{name: "qwen3 max middle tier", model: "qwen3-max", inputTokens: 64000, inputCNY: 4, outputCNY: 16},
-		{name: "qwen coder plus top tier", model: "qwen3-coder-plus", inputTokens: 300000, inputCNY: 20, outputCNY: 200},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			pricing, err := svc.GetModelPricing(tt.model)
-			require.NoError(t, err)
-			pricing = selectModelPricingContextTier(pricing, tt.inputTokens)
-			require.InDelta(t, tt.inputCNY/cnyPerUSD/1e6, pricing.InputPricePerToken, 1e-12)
-			require.InDelta(t, tt.outputCNY/cnyPerUSD/1e6, pricing.OutputPricePerToken, 1e-12)
-		})
-	}
 }

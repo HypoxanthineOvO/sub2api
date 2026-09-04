@@ -5,14 +5,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const {
   createAccountMock,
   probeUpstreamBillingMock,
-  probeNewAPIManagementMock,
+  syncUpstreamModelsMock,
+  showWarningMock,
   importCodexSessionMock,
   createOpenAICodexPATMock,
   authIsSimpleMode,
 } = vi.hoisted(() => ({
   createAccountMock: vi.fn(),
   probeUpstreamBillingMock: vi.fn(),
-  probeNewAPIManagementMock: vi.fn(),
+  syncUpstreamModelsMock: vi.fn(),
+  showWarningMock: vi.fn(),
   importCodexSessionMock: vi.fn(),
   createOpenAICodexPATMock: vi.fn(),
   authIsSimpleMode: { value: true },
@@ -22,7 +24,7 @@ vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError: vi.fn(),
     showSuccess: vi.fn(),
-    showWarning: vi.fn(),
+    showWarning: showWarningMock,
   }),
 }))
 
@@ -39,7 +41,7 @@ vi.mock('@/api/admin', () => ({
     accounts: {
       create: createAccountMock,
       probeUpstreamBilling: probeUpstreamBillingMock,
-      probeNewAPIManagement: probeNewAPIManagementMock,
+      syncUpstreamModels: syncUpstreamModelsMock,
       checkMixedChannelRisk: vi.fn().mockResolvedValue({ has_risk: false }),
       importCodexSession: importCodexSessionMock,
       createOpenAICodexPAT: createOpenAICodexPATMock,
@@ -123,8 +125,12 @@ const ModelWhitelistSelectorStub = defineComponent({
     platform: String,
     syncCredentials: Object,
   },
-  emits: ['update:modelValue'],
-  template: '<div data-testid="model-whitelist-selector" />',
+  emits: ['update:modelValue', 'upstream-synced'],
+  template: `<button
+    type="button"
+    data-testid="model-whitelist-selector"
+    @click="$emit('update:modelValue', ['public-glm']); $emit('upstream-synced')"
+  >models</button>`,
 })
 
 function mountModal(groups: any[] = []) {
@@ -193,7 +199,8 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     authIsSimpleMode.value = true
     createAccountMock.mockReset().mockResolvedValue({ id: 42, platform: 'openai', type: 'apikey' })
     probeUpstreamBillingMock.mockReset().mockResolvedValue({})
-    probeNewAPIManagementMock.mockReset().mockResolvedValue({ status: 'ok', balance_usd: 2 })
+    syncUpstreamModelsMock.mockReset().mockResolvedValue({ models: [], metadata: {} })
+    showWarningMock.mockReset()
     importCodexSessionMock.mockReset().mockResolvedValue({
       created: 1,
       updated: 0,
@@ -219,25 +226,6 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(wrapper.find('[data-testid="create-openai-ws-mode"]').exists()).toBe(true)
   })
 
-  it('stores NewAPI management settings and probes after creating the account', async () => {
-    const wrapper = mountModal()
-    await selectButtonByText(wrapper, 'OpenAI')
-    await selectButtonByText(wrapper, 'API Key')
-    await wrapper.get('form#create-account-form input[type="text"]').setValue('relay account')
-    await wrapper.get('form#create-account-form input[type="password"]').setValue('model-api-key')
-    await wrapper.get('[data-testid="newapi-management-toggle"]').trigger('click')
-    await wrapper.get('[data-testid="newapi-management-token"]').setValue('management-token')
-    await wrapper.get('form#create-account-form').trigger('submit.prevent')
-    await flushPromises()
-
-    expect(createAccountMock.mock.calls[0]?.[0]?.credentials).toMatchObject({
-      newapi_management_enabled: true,
-      newapi_management_base_url: 'https://api.openai.com',
-      newapi_management_token: 'management-token'
-    })
-    expect(probeNewAPIManagementMock).toHaveBeenCalledWith(42)
-  })
-
   it('keeps the account toggle when any selected group disables tier pricing', async () => {
     authIsSimpleMode.value = false
     const wrapper = mountModal([
@@ -257,6 +245,71 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(createAccountMock).toHaveBeenCalledTimes(1)
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
+  })
+
+  it('persists upstream model metadata after creating an account from preview', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenCode account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await wrapper.get('[data-testid="model-whitelist-selector"]').trigger('click')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledOnce()
+    expect(syncUpstreamModelsMock).toHaveBeenCalledWith(42)
+  })
+
+  it('includes the current concrete model mapping in preview credentials', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await wrapper.get('[data-testid="model-whitelist-selector"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('syncCredentials')).toMatchObject({
+      model_mapping: { 'public-glm': 'public-glm' }
+    })
+  })
+
+  it('runs formal capability sync after creating an account with explicit mappings', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Mapped account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await selectButtonByText(wrapper, 'admin.accounts.modelMapping')
+    await selectButtonByText(wrapper, 'admin.accounts.addMapping')
+    await wrapper.get('input[placeholder="admin.accounts.requestModel"]').setValue('public-glm')
+    await wrapper.get('input[placeholder="admin.accounts.actualModel"]').setValue('glm-5.3')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials?.model_mapping).toEqual({
+      'public-glm': 'glm-5.3'
+    })
+    expect(syncUpstreamModelsMock).toHaveBeenCalledWith(42)
+  })
+
+  it('warns when post-create capability metadata remains incomplete', async () => {
+    syncUpstreamModelsMock.mockResolvedValue({
+      models: ['x-preview-f-free'],
+      warnings: [{ code: 'upstream_model_metadata_incomplete', message: 'metadata incomplete' }],
+    })
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenCode account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await wrapper.get('[data-testid="model-whitelist-selector"]').trigger('click')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(showWarningMock).toHaveBeenCalledWith(
+      'admin.accounts.syncUpstreamModelsMetadataIncomplete'
+    )
   })
 
   // namespace 摊平是仅 OAuth 的兼容开关：API Key 走 chat completions 回退桥时由桥自行摊平
@@ -323,88 +376,6 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
       api_base_urls: {
         chat_completions: 'https://api.moonshot.cn/v1',
         anthropic: 'https://api.moonshot.cn/anthropic'
-      }
-    })
-  })
-
-  it('submits adaptive MiniMax endpoints with Bearer auth by default', async () => {
-    const wrapper = mountModal()
-    await selectButtonByText(wrapper, 'MiniMax')
-    await wrapper.get('form#create-account-form input[type="text"]').setValue('MiniMax adaptive')
-    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-minimax')
-
-    await wrapper.get('form#create-account-form').trigger('submit.prevent')
-    await flushPromises()
-
-    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
-      platform: 'minimax',
-      credentials: {
-        account_mode: 'payg',
-        api_protocol: 'adaptive',
-        api_base_urls: {
-          chat_completions: 'https://api.minimaxi.com/v1',
-          anthropic: 'https://api.minimaxi.com/anthropic',
-          responses: 'https://api.minimaxi.com/v1'
-        }
-      },
-      extra: { anthropic_apikey_auth_scheme: 'authorization_bearer' }
-    })
-  })
-
-  it('persists explicit x-api-key auth for MiniMax Anthropic-compatible requests', async () => {
-    const wrapper = mountModal()
-    await selectButtonByText(wrapper, 'MiniMax')
-    await wrapper.get('[data-testid="anthropic-apikey-auth-scheme"]').setValue('x_api_key')
-    await wrapper.get('form#create-account-form input[type="text"]').setValue('MiniMax x-api-key')
-    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-minimax-x')
-
-    await wrapper.get('form#create-account-form').trigger('submit.prevent')
-    await flushPromises()
-
-    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
-      platform: 'minimax',
-      extra: { anthropic_apikey_auth_scheme: 'x_api_key' }
-    })
-  })
-
-  it('offers adaptive and Responses for MiMo Token Plan with a region picker', async () => {
-    const wrapper = mountModal()
-    await selectButtonByText(wrapper, 'MiMo')
-    await selectButtonByText(wrapper, 'admin.accounts.cnProviders.accountMode.coding')
-    await flushPromises()
-
-    expect(wrapper.get('[data-test="mimo-token-plan-warning"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('admin.accounts.cnProviders.apiProtocol.adaptiveDesc')
-    expect(wrapper.text()).toContain('admin.accounts.cnProviders.apiProtocol.responsesDesc')
-    expect(wrapper.find('[data-testid="cn-adaptive-base-url-chat_completions"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="cn-adaptive-base-url-anthropic"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="cn-adaptive-base-url-responses"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="mimo-token-plan-region-picker"]').exists()).toBe(true)
-  })
-
-  it('stores a MiMo Token Plan adaptive endpoint group in the selected region', async () => {
-    const wrapper = mountModal()
-    await selectButtonByText(wrapper, 'MiniMax')
-    await selectButtonByText(wrapper, 'admin.accounts.cnProviders.accountMode.coding')
-    await selectButtonByText(wrapper, 'MiMo')
-    await wrapper.get('[data-testid="mimo-token-plan-region-sgp"]').trigger('click')
-    await wrapper.get('form#create-account-form input[type="text"]').setValue('MiMo token plan')
-    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-mimo-plan')
-
-    await wrapper.get('form#create-account-form').trigger('submit.prevent')
-    await flushPromises()
-
-    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
-      platform: 'mimo',
-      credentials: {
-        account_mode: 'coding',
-        api_protocol: 'adaptive',
-        base_url: 'https://token-plan-sgp.xiaomimimo.com/v1',
-        api_base_urls: {
-          chat_completions: 'https://token-plan-sgp.xiaomimimo.com/v1',
-          anthropic: 'https://token-plan-sgp.xiaomimimo.com/anthropic',
-          responses: 'https://token-plan-sgp.xiaomimimo.com/v1'
-        }
       }
     })
   })

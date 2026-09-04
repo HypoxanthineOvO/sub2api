@@ -144,6 +144,7 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	var (
 		targetURL  string
 		authHeader string
+		zhipuOrg   string
 	)
 	switch provider {
 	case PlatformKimi:
@@ -152,6 +153,10 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	case PlatformZhipu:
 		targetURL = zhipuQuotaURL(baseURL)
 		authHeader = apiKey // 智谱额度端点鉴权不加 Bearer 前缀
+		zhipuOrg = strings.TrimSpace(account.GetCredential("zhipu_organization"))
+		if zhipuOrg != "" {
+			targetURL += "?type=2"
+		}
 	case PlatformMinimax:
 		// Token Plan 额度 API 不与推理 base_url 同源，固定官方端点以避免
 		// 把订阅 key 发往账号自定义的数据面地址。
@@ -181,6 +186,12 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	}
 	if provider == PlatformZhipu {
 		req.Header.Set("Accept-Language", "en-US,en")
+		if zhipuOrg != "" {
+			req.Header.Set("bigmodel-organization", zhipuOrg)
+			if project := strings.TrimSpace(account.GetCredential("zhipu_project")); project != "" {
+				req.Header.Set("bigmodel-project", project)
+			}
+		}
 	}
 	// 探测与真实转发保持同一套账号级请求头覆写，避免探测通过但转发失败。
 	account.ApplyHeaderOverrides(req.Header)
