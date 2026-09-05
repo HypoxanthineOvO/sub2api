@@ -765,7 +765,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		return
 	}
 
-	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, false)
+	etag := buildAccountsListETag(stripVolatileFieldsForETag(result), total, page, pageSize, platform, accountType, status, search, false)
 	if etag != "" {
 		c.Header("ETag", etag)
 		c.Header("Vary", "If-None-Match")
@@ -785,20 +785,6 @@ func buildAccountsListETag[T any](
 	platform, accountType, status, search string,
 	lite bool,
 ) string {
-	projectedItems := make([]AccountWithConcurrency, len(items))
-	for i := range items {
-		projectedItems[i] = items[i]
-		if items[i].Account == nil {
-			continue
-		}
-		accountCopy := *items[i].Account
-		if items[i].Account.Proxy != nil {
-			proxyCopy := *items[i].Account.Proxy
-			proxyCopy.SelectedNodeObservedAt = ""
-			accountCopy.Proxy = &proxyCopy
-		}
-		projectedItems[i].Account = &accountCopy
-	}
 	payload := struct {
 		Total       int64  `json:"total"`
 		Page        int    `json:"page"`
@@ -818,7 +804,7 @@ func buildAccountsListETag[T any](
 		Status:      status,
 		Search:      search,
 		Lite:        lite,
-		Items:       projectedItems,
+		Items:       items,
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -826,6 +812,26 @@ func buildAccountsListETag[T any](
 	}
 	sum := sha256.Sum256(raw)
 	return "\"" + hex.EncodeToString(sum[:]) + "\""
+}
+
+// stripVolatileFieldsForETag 拷贝列表项并清除高频变化的字段（代理选中节点的
+// 观测时间戳），避免其参与 ETag 计算导致账号列表反复全页刷新。
+func stripVolatileFieldsForETag(items []AccountWithConcurrency) []AccountWithConcurrency {
+	projected := make([]AccountWithConcurrency, len(items))
+	for i := range items {
+		projected[i] = items[i]
+		if items[i].Account == nil {
+			continue
+		}
+		accountCopy := *items[i].Account
+		if accountCopy.Proxy != nil {
+			proxyCopy := *accountCopy.Proxy
+			proxyCopy.SelectedNodeObservedAt = ""
+			accountCopy.Proxy = &proxyCopy
+		}
+		projected[i].Account = &accountCopy
+	}
+	return projected
 }
 
 func (h *AccountHandler) enrichAccountSelectedNodes(ctx context.Context, accounts []service.Account) {

@@ -208,13 +208,13 @@ func TestAccountsListETagIgnoresSelectedNodeObservationTimestamp(t *testing.T) {
 		ID: 4, SelectedNodeName: "Hong Kong HKT-01", SelectedNodeStatus: service.SelectedNodeStatusFresh,
 		SelectedNodeObservedAt: "2026-08-20T06:00:00Z",
 	}}}}
-	first := buildAccountsListETag(items, 1, 1, 20, "", "", "", "", false)
+	first := buildAccountsListETag(stripVolatileFieldsForETag(items), 1, 1, 20, "", "", "", "", false)
 	items[0].Proxy.SelectedNodeObservedAt = "2026-08-20T06:00:05Z"
-	second := buildAccountsListETag(items, 1, 1, 20, "", "", "", "", false)
+	second := buildAccountsListETag(stripVolatileFieldsForETag(items), 1, 1, 20, "", "", "", "", false)
 	require.Equal(t, first, second)
 	require.Equal(t, "2026-08-20T06:00:05Z", items[0].Proxy.SelectedNodeObservedAt)
 	items[0].Proxy.SelectedNodeStatus = service.SelectedNodeStatusStale
-	require.NotEqual(t, second, buildAccountsListETag(items, 1, 1, 20, "", "", "", "", false))
+	require.NotEqual(t, second, buildAccountsListETag(stripVolatileFieldsForETag(items), 1, 1, 20, "", "", "", "", false))
 }
 
 func TestAccountHandlerListReturnsSchedulerScoresPerGroup(t *testing.T) {

@@ -1623,10 +1623,18 @@ func TestFetchCodexModelsManifestPassthrough(t *testing.T) {
 	if err := json.Unmarshal(manifest.Body, &normalizedBody); err != nil {
 		t.Fatalf("manifest body is invalid JSON: %v", err)
 	}
-	if got := normalizedBody["models"].([]any)[0].(map[string]any)["slug"]; got != "gpt-5.5" {
+	models, ok := normalizedBody["models"].([]any)
+	if !ok || len(models) == 0 {
+		t.Fatalf("manifest body must contain a models array: %v", normalizedBody["models"])
+	}
+	firstModel, ok := models[0].(map[string]any)
+	if !ok {
+		t.Fatalf("first model entry is not an object: %v", models[0])
+	}
+	if got := firstModel["slug"]; got != "gpt-5.5" {
 		t.Errorf("model slug: got %v", got)
 	}
-	if got := normalizedBody["models"].([]any)[0].(map[string]any)["max_context_window"]; got != float64(openAILongContextWindow) {
+	if got := firstModel["max_context_window"]; got != float64(openAILongContextWindow) {
 		t.Errorf("max context window: got %v", got)
 	}
 	if manifest.ETag != codexModelsManifestBodyETag(manifest.Body) {
@@ -1820,20 +1828,22 @@ func TestFetchCodexModelsManifestNotModified(t *testing.T) {
 	if first.NotModified {
 		t.Fatal("cold fetch must return the manifest body")
 	}
-	if first.ETag != `W/"abc123"` {
-		t.Errorf("etag not passed through: got %q", first.ETag)
+	// VSP 本地注入 gpt-5.5 的 max_context_window，客户端可见 body 与上游不同，
+	// 因此客户端 ETag 必须按注入后的 body 重算，而非透传上游 W/"abc123"。
+	if first.ETag != CodexModelsManifestETag(first.Body) {
+		t.Errorf("etag must hash the normalized body: got %q", first.ETag)
 	}
 
 	// OAuth 路径接入缓存后，客户端 If-None-Match 与缓存内容 ETag 比较，不再透传上游：
 	// 新鲜期内命中缓存且匹配直接 304，零上游请求。
-	second, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", `W/"abc123"`)
+	second, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", first.ETag)
 	if err != nil {
 		t.Fatalf("cached fetch returned error: %v", err)
 	}
 	if !second.NotModified {
 		t.Fatal("matching cached ETag must return NotModified")
 	}
-	if second.ETag != `W/"abc123"` {
+	if second.ETag != first.ETag {
 		t.Errorf("NotModified etag: got %q", second.ETag)
 	}
 	if got := calls.Load(); got != 1 {
@@ -2421,9 +2431,12 @@ func TestFetchCodexModelsManifestAcceptsConfiguredLimitAboveLegacyBoundary(t *te
 	require.NoError(t, err)
 	var normalized map[string]any
 	require.NoError(t, json.Unmarshal(manifest.Body, &normalized))
-	models := normalized["models"].([]any)
-	require.Equal(t, "gpt-5.6", models[0].(map[string]any)["slug"])
-	require.Equal(t, float64(openAILongContextWindow), models[0].(map[string]any)["max_context_window"])
+	models, ok := normalized["models"].([]any)
+	require.True(t, ok, "manifest body must contain a models array")
+	firstModel, ok := models[0].(map[string]any)
+	require.True(t, ok, "first model entry is not an object")
+	require.Equal(t, "gpt-5.6", firstModel["slug"])
+	require.Equal(t, float64(openAILongContextWindow), firstModel["max_context_window"])
 	require.Greater(t, len(manifest.Body), 8<<20)
 }
 
@@ -3373,7 +3386,8 @@ func TestFetchCodexModelsManifestOAuthFreshWindowZeroUpstreamRequests(t *testing
 		manifest, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
 		require.NoError(t, err)
 		require.False(t, manifest.NotModified)
-		require.JSONEq(t, `{"models":[{"slug":"gpt-5.5"}]}`, string(manifest.Body))
+		// VSP 本地为 gpt-5.5 注入 max_context_window，缓存 body 是注入后的形态。
+		require.JSONEq(t, `{"models":[{"max_context_window":1050000,"slug":"gpt-5.5"}]}`, string(manifest.Body))
 	}
 	require.EqualValues(t, 1, calls.Load(), "新鲜期内重复请求不得打到 chatgpt.com")
 }
