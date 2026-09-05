@@ -42,10 +42,11 @@ func TestAdminService_CreateCompositeGroupCopiesAccountsFromConcreteGroups(t *te
 	svc := &adminServiceImpl{groupRepo: groupRepo}
 
 	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
-		Name:               "Composite",
-		Platform:           PlatformComposite,
-		RateMultiplier:     1,
-		MaxReasoningEffort: "medium",
+		Name:                        "Composite",
+		Platform:                    PlatformComposite,
+		RateMultiplier:              1,
+		MaxReasoningEffort:          "medium",
+		MaxReasoningEffortOverLimit: ReasoningEffortOverLimitDeny,
 		ReasoningEffortMappings: []ReasoningEffortMapping{
 			{From: "max", To: "xhigh"},
 		},
@@ -55,6 +56,7 @@ func TestAdminService_CreateCompositeGroupCopiesAccountsFromConcreteGroups(t *te
 	require.NoError(t, err)
 	require.Equal(t, PlatformComposite, groupRepo.created.Platform)
 	require.Equal(t, "medium", groupRepo.created.MaxReasoningEffort)
+	require.Equal(t, ReasoningEffortOverLimitDeny, groupRepo.created.MaxReasoningEffortOverLimit)
 	require.Equal(t, []ReasoningEffortMapping{{From: "max", To: "xhigh"}}, groupRepo.created.ReasoningEffortMappings)
 	require.Equal(t, int64(99), group.ID)
 	require.Equal(t, int64(2), group.AccountCount)
@@ -90,17 +92,20 @@ func TestAdminService_UpdateCompositeGroupCopiesAccountsFromConcreteGroups(t *te
 	}
 	svc := &adminServiceImpl{groupRepo: groupRepo}
 	maxReasoningEffort := "low"
+	maxReasoningEffortOverLimit := ReasoningEffortOverLimitDeny
 	reasoningEffortMappings := []ReasoningEffortMapping{{From: "max", To: "high"}}
 
 	group, err := svc.UpdateGroup(context.Background(), 99, &UpdateGroupInput{
-		MaxReasoningEffort:       &maxReasoningEffort,
-		ReasoningEffortMappings:  &reasoningEffortMappings,
-		CopyAccountsFromGroupIDs: []int64{10, 20},
+		MaxReasoningEffort:          &maxReasoningEffort,
+		MaxReasoningEffortOverLimit: &maxReasoningEffortOverLimit,
+		ReasoningEffortMappings:     &reasoningEffortMappings,
+		CopyAccountsFromGroupIDs:    []int64{10, 20},
 	})
 
 	require.NoError(t, err)
 	require.Equal(t, PlatformComposite, group.Platform)
 	require.Equal(t, "low", group.MaxReasoningEffort)
+	require.Equal(t, ReasoningEffortOverLimitDeny, group.MaxReasoningEffortOverLimit)
 	require.Equal(t, reasoningEffortMappings, group.ReasoningEffortMappings)
 	require.Equal(t, int64(99), clearedGroupID)
 	require.ElementsMatch(t, []int64{10, 20}, copiedFrom)
@@ -201,9 +206,8 @@ func TestAdminService_CompositeModelsListCandidatesIncludeConcreteAccountMapping
 	require.Contains(t, candidates, "gemini-2.5-flash")
 }
 
-// 独立 CN 分组的模型列表候选沿用 default 分支的 Claude 默认列表；
-// composite 支持不得改变独立分组的候选语义。
-func TestAdminService_CNProviderModelsListCandidatesKeepClaudeDefaults(t *testing.T) {
+// 既有 CN 分组保持兼容默认；MiniMax / MiMo 暴露供应商模型候选。
+func TestAdminService_CNProviderModelsListCandidates(t *testing.T) {
 	want := make([]string, 0, len(claude.DefaultModels))
 	for _, model := range claude.DefaultModels {
 		want = append(want, model.ID)
@@ -211,4 +215,9 @@ func TestAdminService_CNProviderModelsListCandidatesKeepClaudeDefaults(t *testin
 	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek} {
 		require.Equal(t, want, defaultModelsListCandidateIDs(platform), "platform=%s", platform)
 	}
+	require.Equal(t, "MiniMax-M3", defaultModelsListCandidateIDs(PlatformMinimax)[0])
+	require.Contains(t, defaultModelsListCandidateIDs(PlatformMinimax), "MiniMax-M2.7-highspeed")
+	require.Equal(t, []string{"mimo-v2.5", "mimo-v2.5-pro"}, defaultModelsListCandidateIDs(PlatformMiMo))
+	require.Contains(t, defaultModelsListCandidateIDs(PlatformHunyuan), "hy-mt2-pro")
+	require.Contains(t, defaultModelsListCandidateIDs(PlatformQwen), "qwen3.7-plus")
 }

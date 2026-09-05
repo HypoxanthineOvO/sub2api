@@ -369,7 +369,7 @@ func labDashboardAccountBilling(account *Account) (string, []LabDashboardQuotaWi
 	switch {
 	case account.IsOpenAIOAuth():
 		windows = labDashboardQuotaWindows(account.Extra, "codex", "7d")
-	case mode == AccountModeCoding && (account.Platform == PlatformKimi || account.Platform == PlatformZhipu):
+	case mode == AccountModeCoding && SupportsCodingPlanQuotaProbe(account.Platform):
 		windows = labDashboardQuotaWindows(account.Extra, account.Platform, "weekly")
 	}
 	if mode != AccountModePayG {

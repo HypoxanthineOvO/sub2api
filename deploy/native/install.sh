@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+repo_root=${VSP_NATIVE_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}
+repo_root=$(realpath -e "$repo_root")
 prefix=${VSP_NATIVE_PREFIX:-/opt/vsp-sub2api}
 config_root=${VSP_NATIVE_CONFIG_ROOT:-/etc/vsp-sub2api}
 data_root=${VSP_NATIVE_DATA_ROOT:-/var/lib/vsp-sub2api}

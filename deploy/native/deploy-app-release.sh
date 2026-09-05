@@ -1,15 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+repo_root=${VSP_NATIVE_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}
+repo_root=$(realpath -e "$repo_root")
 prefix=${VSP_NATIVE_PREFIX:-/opt/vsp-sub2api}
 config_root=${VSP_NATIVE_CONFIG_ROOT:-/etc/vsp-sub2api}
 soak_seconds=${VSP_CANARY_SOAK_SECONDS:-15}
 drain_timeout=${VSP_DEPLOY_DRAIN_TIMEOUT:-120}
-switch_script="$repo_root/deploy/native/switch-app-slot.sh"
+deploy_libexec=${VSP_NATIVE_DEPLOY_LIBEXEC:-$repo_root/deploy/native}
+install_script="$deploy_libexec/install.sh"
+switch_script="$deploy_libexec/switch-app-slot.sh"
+temp_dir=$(mktemp -d)
+trap 'rm -rf "$temp_dir"' EXIT
 
 repo_git() {
   git -c safe.directory="$repo_root" -C "$repo_root" "$@"
+}
+
+source_tree() {
+  local index="$temp_dir/source.index"
+  rm -f "$index"
+  GIT_INDEX_FILE="$index" repo_git read-tree HEAD
+  GIT_INDEX_FILE="$index" repo_git add -A -- backend frontend
+  GIT_INDEX_FILE="$index" repo_git write-tree
 }
 
 if [[ ${EUID} -ne 0 ]]; then
@@ -28,7 +41,9 @@ fi
 for path in \
   "$repo_root/dist/native/sub2api" \
   "$repo_root/dist/native/source-commit" \
-  "$repo_root/deploy/native/install.sh" \
+  "$repo_root/dist/native/source-tree" \
+  "$repo_root/dist/native/sub2api.sha256" \
+  "$install_script" \
   "$switch_script" \
   /etc/nginx/sub2api-upstreams/active.conf \
   /etc/nginx/sub2api-upstreams/blue.conf \
@@ -38,20 +53,29 @@ do
   [[ -e $path ]] || { echo "Missing required path: $path" >&2; exit 1; }
 done
 
-repo_git diff --quiet
-repo_git diff --cached --quiet
-untracked_sources=$(repo_git ls-files --others --exclude-standard -- backend frontend)
-if [[ -n $untracked_sources ]]; then
-  echo 'Untracked backend/frontend source files must be resolved before deployment.' >&2
-  exit 1
-fi
 head_commit=$(repo_git rev-parse HEAD)
 built_commit=$(tr -d '[:space:]' <"$repo_root/dist/native/source-commit")
 [[ $built_commit == "$head_commit" ]] || {
   echo "Build is for $built_commit, but HEAD is $head_commit; run build.sh again." >&2
   exit 1
 }
+built_tree=$(tr -d '[:space:]' <"$repo_root/dist/native/source-tree")
+current_tree=$(source_tree)
+[[ $built_tree == "$current_tree" ]] || {
+  echo "Source tree changed after build ($built_tree -> $current_tree); run build.sh again." >&2
+  exit 1
+}
+built_sha256=$(tr -d '[:space:]' <"$repo_root/dist/native/sub2api.sha256")
+actual_sha256=$(sha256sum "$repo_root/dist/native/sub2api" | awk '{print $1}')
+[[ $built_sha256 == "$actual_sha256" ]] || {
+  echo 'Built binary checksum does not match sub2api.sha256; run build.sh again.' >&2
+  exit 1
+}
+head_tree=$(repo_git rev-parse 'HEAD^{tree}')
 release=${head_commit:0:9}
+if [[ $built_tree != "$head_tree" ]]; then
+  release="${release}-${built_tree:0:9}"
+fi
 
 active_target=$(readlink -f /etc/nginx/sub2api-upstreams/active.conf)
 case $active_target in
@@ -99,7 +123,8 @@ install_slot() {
   env VSP_NATIVE_RELEASE="$release" VSP_NATIVE_SLOT="$new_slot" \
     VSP_NATIVE_SLOT_MODE="$mode" VSP_NATIVE_PREFIX="$prefix" \
     VSP_NATIVE_CONFIG_ROOT="$config_root" \
-    bash "$repo_root/deploy/native/install.sh"
+    VSP_NATIVE_REPO_ROOT="$repo_root" \
+    bash "$install_script"
 }
 
 routing_is_old() {

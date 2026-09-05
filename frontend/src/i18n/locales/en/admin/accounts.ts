@@ -107,14 +107,18 @@ export default {
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
+        minimax: 'MiniMax',
+        mimo: 'MiMo',
       },
       cnProviders: {
         accountMode: {
           title: 'Account Type',
           payg: 'Pay-as-you-go',
-          paygDesc: 'Consumes account balance, billed per token. Auto-cools down on low balance and recovers after top-up.',
-          coding: 'Coding Plan',
-          codingDesc: 'Subscription coding package, rate-limited by 5-hour / weekly rolling usage windows.',
+          paygDesc: 'Pay-as-you-go API key billed by the provider per token.',
+          coding: 'Token Plan',
+          codingDesc: 'Subscription package with provider-defined rolling usage limits.',
+          codingMimoDesc: 'MiMo subscription package. The official API does not expose remaining credits; check them in the MiMo console.',
+          mimoUsageWarning: 'MiMo Token Plan keys are region-bound. Select the same CN, SGP, or EU (AMS) region where the key was issued; PAYG keys use a separate endpoint.',
         },
         apiProtocol: {
           title: 'API Protocol',
@@ -129,15 +133,32 @@ export default {
           responses: 'Responses',
           responsesDesc: 'Provider’s native Responses endpoint — ideal for Codex.',
         },
+        zhipuTeam: {
+          title: 'Team Plan Organization / Project ID',
+          organization: 'Organization ID (team plan, optional)',
+          organizationPlaceholder: 'Organization ID of the team Coding Plan',
+          project: 'Project ID (team plan, optional)',
+          projectPlaceholder: 'Project ID of the team Coding Plan',
+          hint: 'Only required for the team GLM Coding Plan; when set, usage queries go through the team endpoint. Leave empty for personal plans. Click the question mark for how to obtain the IDs.',
+          help: {
+            title: 'How to get the Organization / Project ID',
+            step1: 'Sign in to the Zhipu open platform (bigmodel.cn) with your team account and open "Coding Plan → Team → My Plan".',
+            step2: 'Press F12 to open browser DevTools, switch to the Network tab, then reload the page.',
+            step3: 'Type /api/biz/v1/organization into the Network filter box and click the matched request (e.g. api_keys).',
+            step4: 'In the request URL, the org-… segment is the Organization ID and the proj_… segment is the Project ID (also visible as the bigmodel-organization / bigmodel-project request headers). Fill them into the fields above.',
+            example: 'Example: …/organization/org-0610bE2D…/projects/proj_0798F20…/api_keys → org-0610bE2D… goes into "Organization ID", proj_0798F20… into "Project ID"',
+          },
+        },
         balance: 'Balance --',
-        window5h: '5-hour window',
-        windowWeekly: 'Weekly window',
+        window5h: '5h',
+        windowWeekly: '7d',
         probe: 'Query',
         probeTooltip: 'Query the provider quota endpoint for 5-hour / weekly rolling window usage',
         balanceProbeTooltip: 'Query the provider balance endpoint for the account balance',
         balanceLow: 'Insufficient balance',
         noBalanceEndpoint: 'This platform has no balance query endpoint',
-        resetSoon: 'reset soon',
+        quotaConsoleOnly: 'Quota unavailable via API',
+        quotaConsoleOnlyTooltip: 'MiMo does not expose a public quota API. Check remaining credits in the official console.',
       },
       types: {
         oauth: 'OAuth',
@@ -301,6 +322,28 @@ export default {
         batchCompleted: 'Probed {count} account(s)',
         batchPartial: 'Probe partially completed: {success} succeeded, {failed} failed'
       },
+      newapiManagement: {
+        title: 'NewAPI balance monitoring',
+        hint: 'Configure a NewAPI system access token to read the relay account balance and cumulative usage after saving.',
+        baseUrl: 'Management URL',
+        baseUrlHint: 'Usually the relay origin. The trailing /v1 or /anthropic is removed from the forwarding URL automatically.',
+        baseUrlRequired: 'Enter the NewAPI management URL',
+        token: 'System access token',
+        tokenPlaceholder: 'Enter the NewAPI system access token',
+        tokenHint: 'The token and balance will be checked immediately after the account is saved.',
+        tokenRequired: 'Enter the NewAPI system access token',
+        keepToken: 'Leave empty to keep the current system access token',
+        balance: 'Balance',
+        used: 'Used',
+        pending: 'Balance pending',
+        failed: 'Balance query failed',
+        requestCount: 'Requests: {count}',
+        tokenCount: 'Tokens: {count}',
+        refresh: 'Refresh balance',
+        refreshHint: 'Query the NewAPI account balance and cumulative usage',
+        probeFailed: 'Failed to query NewAPI balance',
+        probeFailedAfterSave: 'Account saved, but the NewAPI balance query failed'
+      },
       allPrivacyModes: 'All Privacy States',
       privacyUnset: 'Unset',
       privacyTrainingOff: 'Training data sharing disabled',
@@ -458,6 +501,7 @@ export default {
         partialSuccess: 'Partially completed: {success} succeeded, {failed} failed'
       },
       bulkEdit: {
+    cnConnectionProfileHint: 'Apply account mode, API protocol, and matching official endpoints to all selected provider accounts.',
         title: 'Bulk Edit Accounts',
         selectionInfo:
           '{count} account(s) selected. Only checked or filled fields will be updated; others stay unchanged.',
@@ -544,6 +588,14 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: 'Your Claude Console API Key',
+      upstreamRequestIdHeader: 'Upstream ID',
+      upstreamRequestIdHeaderPlaceholder: 'Leave empty to record nothing',
+      upstreamRequestIdHeaderHelp: {
+        intro: 'Name of the response header in which the direct upstream declares its request ID. The value is recorded in the "Upstream ID" column of the usage log; leave empty to record nothing.',
+        examplesTitle: 'Common values',
+        sub2apiNote: 'Matches the request ID column of its usage log',
+        official: '{platform} official API'
+      },
       // OpenAI specific hints
       openai: {
         baseUrlHint: 'Leave default for official OpenAI API',
@@ -588,6 +640,9 @@ export default {
         responsesModeForceChatCompletions: 'Force Chat Completions',
         responsesModeTextDisabledHint:
           'Not applicable when the Responses / Chat Completions endpoint is not enabled.',
+        imagesUrlToB64Json: 'Image result URL to base64',
+        imagesUrlToB64JsonDesc:
+          'Only applies to non-streaming Images responses of OpenAI API Key accounts. When an upstream image item has a url but no b64_json, the gateway downloads the url and fills b64_json with its base64 content (url is kept) for clients built on the official API; the response is returned unchanged if the download fails.',
         endpointCapabilities: 'Endpoint capabilities',
         endpointCapabilitiesDesc:
           'Used by account routing. The text endpoint follows the Responses API support setting above and is shown as Responses, Chat Completions, or auto mode; Embeddings independently controls /v1/embeddings.',
@@ -743,6 +798,10 @@ export default {
       syncUpstreamModelsEmpty: 'Upstream returned no models to sync',
       syncUpstreamModelsFailed: 'Failed to sync upstream models',
       syncUpstreamModelsError: 'Failed to sync upstream models: {message}',
+      syncUpstreamModelsMetadataIncomplete:
+        'Model IDs were synced, but no capability metadata could be updated.',
+      syncUpstreamModelsMetadataPartial:
+        'Some model capabilities were updated; remaining models are still incomplete.',
       clearAllModels: 'Clear all models',
       customModelName: 'Custom model name',
       enterCustomModelName: 'Enter custom model name',
@@ -815,20 +874,20 @@ export default {
       },
       autoPauseOnExpired: 'Auto Pause On Expired',
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
-	  autoPause5hThreshold: '5h Usage Threshold (%)',
-	  autoPause7dThreshold: '7d Usage Threshold (%)',
-	  autoPauseThresholdHint: 'Leave empty or set 0 to use the global default threshold (configured in Ops settings); set a value to override the global default. Reaching the threshold only skips the account during scheduling and does not modify schedulable.',
-	  autoPause5hDisabled: 'Disable 5h auto-pause',
-	  autoPause7dDisabled: 'Disable 7d auto-pause',
-	  autoPauseDisabledHint: 'When enabled, this account is never auto-paused (even if a global default threshold is configured).',
-	  autoResetCredit: {
-	    title: 'Automatically use reset credits',
-	    hint: 'Uses the earliest-expiring available credit only when actual usage reaches a threshold. Off by default; the account remains paused if no credit is available or reset fails.',
-	    threshold5h: '5h auto-reset threshold (%)',
-	    threshold7d: '7d auto-reset threshold (%)',
-	    thresholdHint: 'Each window is evaluated independently. Enter 0.1–100; both default to 100.',
-	    thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.'
-	  },
+    autoPause5hThreshold: '5h Usage Threshold (%)',
+    autoPause7dThreshold: '7d Usage Threshold (%)',
+    autoPauseThresholdHint: 'Leave empty or set 0 to use the global default threshold (configured in Ops settings); set a value to override the global default. Reaching the threshold only skips the account during scheduling and does not modify schedulable.',
+    autoPause5hDisabled: 'Disable 5h auto-pause',
+    autoPause7dDisabled: 'Disable 7d auto-pause',
+    autoPauseDisabledHint: 'When enabled, this account is never auto-paused (even if a global default threshold is configured).',
+    autoResetCredit: {
+      title: 'Automatically use reset credits',
+      hint: 'Uses the earliest-expiring available credit only when actual usage reaches a threshold. Off by default; the account remains paused if no credit is available or reset fails.',
+      threshold5h: '5h auto-reset threshold (%)',
+      threshold7d: '7d auto-reset threshold (%)',
+      thresholdHint: 'Each window is evaluated independently. Enter 0.1–100; both default to 100.',
+      thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.'
+    },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: 'Quota Control',
@@ -926,6 +985,7 @@ export default {
       billingRateMultiplierHint: '0 = free, affects account billing only',
       expiresAt: 'Expires At',
       expiresAtHint: 'Leave empty for no expiration',
+      expiresAtTimezoneHint: 'Input is interpreted in your browser time zone ({timezone}).',
       higherPriorityFirst: 'Lower value means higher priority',
       mixedScheduling: 'Use in /v1/messages',
       mixedSchedulingHint: 'Enable to participate in Anthropic/Gemini group scheduling',
@@ -1161,54 +1221,54 @@ export default {
           oauthOnlyHint: 'Initial Grok support is OAuth subscription-backed Responses API text and reasoning traffic only.'
         },
         // Gemini specific
-	        gemini: {
-	          title: 'Gemini Account Authorization',
-	          followSteps: 'Follow these steps to authorize your Gemini account:',
-	          step1GenerateUrl: 'Generate the authorization URL',
-	          generateAuthUrl: 'Generate Auth URL',
-	          projectIdLabel: 'Project ID (optional)',
-	          projectIdPlaceholder: 'e.g. my-gcp-project or cloud-ai-companion-xxxxx',
-	          projectIdHint:
-	            'Leave empty to auto-detect after code exchange. If auto-detection fails, fill it in and re-generate the auth URL to try again.',
-	          howToGetProjectId: 'How to get',
-	          step2OpenUrl: 'Open the URL in your browser and complete authorization',
-	          openUrlDesc:
-	            'Open the authorization URL in a new tab, log in to your Google account and authorize.',
-	          step3EnterCode: 'Enter Authorization URL or Code',
-	          authCodeDesc:
-	            'After authorization, copy the callback URL (recommended) or just the code and paste it below.',
-	          authCode: 'Callback URL or Code',
-	          authCodePlaceholder:
-	            'Option 1 (recommended): Paste the callback URL\nOption 2: Paste only the code value',
-	          authCodeHint: 'The system will auto-extract code/state from the URL.',
+          gemini: {
+            title: 'Gemini Account Authorization',
+            followSteps: 'Follow these steps to authorize your Gemini account:',
+            step1GenerateUrl: 'Generate the authorization URL',
+            generateAuthUrl: 'Generate Auth URL',
+            projectIdLabel: 'Project ID (optional)',
+            projectIdPlaceholder: 'e.g. my-gcp-project or cloud-ai-companion-xxxxx',
+            projectIdHint:
+              'Leave empty to auto-detect after code exchange. If auto-detection fails, fill it in and re-generate the auth URL to try again.',
+            howToGetProjectId: 'How to get',
+            step2OpenUrl: 'Open the URL in your browser and complete authorization',
+            openUrlDesc:
+              'Open the authorization URL in a new tab, log in to your Google account and authorize.',
+            step3EnterCode: 'Enter Authorization URL or Code',
+            authCodeDesc:
+              'After authorization, copy the callback URL (recommended) or just the code and paste it below.',
+            authCode: 'Callback URL or Code',
+            authCodePlaceholder:
+              'Option 1 (recommended): Paste the callback URL\nOption 2: Paste only the code value',
+            authCodeHint: 'The system will auto-extract code/state from the URL.',
           redirectUri: 'Redirect URI',
           redirectUriHint:
             'This must be configured in your Google OAuth client and must match exactly.',
           confirmRedirectUri:
             'I have configured this Redirect URI in the Google OAuth client (must match exactly)',
-	          invalidRedirectUri: 'Redirect URI must be a valid http(s) URL',
-	          redirectUriNotConfirmed: 'Please confirm the Redirect URI is configured correctly',
-	          missingRedirectUri: 'Missing redirect URI',
-	          failedToGenerateUrl: 'Failed to generate Gemini auth URL',
-	          missingExchangeParams: 'Missing auth code, session ID, or state',
-	          failedToExchangeCode: 'Failed to exchange Gemini auth code',
-	          missingProjectId: 'GCP Project ID retrieval failed: Your Google account is not linked to an active GCP project. Please activate GCP and bind a credit card in Google Cloud Console, or manually enter the Project ID during authorization.',
-	          modelPassthrough: 'Gemini Model Passthrough',
-	          modelPassthroughDesc:
-	            'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
-	          stateWarningTitle: 'Note',
-	          stateWarningDesc: 'Recommended: paste the full callback URL (includes code & state).',
-	          oauthTypeLabel: 'OAuth Type',
+            invalidRedirectUri: 'Redirect URI must be a valid http(s) URL',
+            redirectUriNotConfirmed: 'Please confirm the Redirect URI is configured correctly',
+            missingRedirectUri: 'Missing redirect URI',
+            failedToGenerateUrl: 'Failed to generate Gemini auth URL',
+            missingExchangeParams: 'Missing auth code, session ID, or state',
+            failedToExchangeCode: 'Failed to exchange Gemini auth code',
+            missingProjectId: 'GCP Project ID retrieval failed: Your Google account is not linked to an active GCP project. Please activate GCP and bind a credit card in Google Cloud Console, or manually enter the Project ID during authorization.',
+            modelPassthrough: 'Gemini Model Passthrough',
+            modelPassthroughDesc:
+              'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
+            stateWarningTitle: 'Note',
+            stateWarningDesc: 'Recommended: paste the full callback URL (includes code & state).',
+            oauthTypeLabel: 'OAuth Type',
           needsProjectId: 'Built-in OAuth (Code Assist)',
           needsProjectIdDesc: 'Requires GCP project and Project ID',
           noProjectIdNeeded: 'Custom OAuth (AI Studio)',
           noProjectIdNeededDesc: 'Requires admin-configured OAuth client',
-	          aiStudioNotConfiguredShort: 'Not configured',
-	          aiStudioNotConfiguredTip:
-	            'AI Studio OAuth is not configured: set GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET and add Redirect URI: http://localhost:1455/auth/callback (Consent screen scopes must include https://www.googleapis.com/auth/generative-language.retriever)',
-	          aiStudioNotConfigured:
-	            'AI Studio OAuth is not configured: set GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET and add Redirect URI: http://localhost:1455/auth/callback'
-	        },
+            aiStudioNotConfiguredShort: 'Not configured',
+            aiStudioNotConfiguredTip:
+              'AI Studio OAuth is not configured: set GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET and add Redirect URI: http://localhost:1455/auth/callback (Consent screen scopes must include https://www.googleapis.com/auth/generative-language.retriever)',
+            aiStudioNotConfigured:
+              'AI Studio OAuth is not configured: set GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET and add Redirect URI: http://localhost:1455/auth/callback'
+          },
         // Antigravity specific
         antigravity: {
           title: 'Antigravity Account Authorization',

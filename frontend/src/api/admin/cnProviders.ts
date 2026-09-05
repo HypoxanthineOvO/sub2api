@@ -1,5 +1,5 @@
 /**
- * Admin CN providers (Kimi / Zhipu / DeepSeek) API endpoints.
+ * Admin CN providers API endpoints.
  * Coding-plan rolling-window quota probe + payg balance probe.
  */
 
@@ -12,7 +12,7 @@ export interface CNQuotaTier {
   reset_at?: string
 }
 
-/** Coding Plan 额度探测结果（kimi / zhipu），对齐后端 CNProviderQuotaProbeResult。 */
+/** Token/Coding Plan 额度探测结果，对齐后端 CNProviderQuotaProbeResult。 */
 export interface CNProviderQuotaProbeResult {
   provider: string
   source?: string

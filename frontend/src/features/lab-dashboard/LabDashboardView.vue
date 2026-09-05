@@ -438,6 +438,8 @@ const providerLabel = (provider: string): string => ({
   openai: 'OpenAI',
   deepseek: 'DeepSeek',
   kimi: 'Kimi',
+  minimax: 'MiniMax',
+  mimo: 'MiMo',
   glm: 'GLM',
   anthropic: 'Anthropic',
   gemini: 'Gemini',
@@ -448,6 +450,8 @@ const providerIconText = (provider: string): string => ({
   openai: 'AI',
   deepseek: 'DS',
   kimi: 'KM',
+  minimax: 'MM',
+  mimo: 'MI',
   glm: 'GL'
 }[provider] || provider.slice(0, 2).toUpperCase())
 
@@ -494,7 +498,7 @@ const accountCards = computed<AccountCardModel[]>(() =>
 
 const schedulableCount = computed(() => accountCards.value.filter((card) => !card.paused).length)
 
-const providerOrder = ['openai', 'deepseek', 'kimi', 'glm', 'anthropic', 'gemini', 'grok']
+const providerOrder = ['openai', 'deepseek', 'kimi', 'minimax', 'mimo', 'glm', 'anthropic', 'gemini', 'grok']
 const providerGroups = computed(() => {
   const groups = new Map<string, AccountCardModel[]>()
   for (const card of accountCards.value) {

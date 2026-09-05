@@ -22,6 +22,8 @@ var monitorProviders = map[string]struct{}{
 	MonitorProviderKimi:        {},
 	MonitorProviderZhipu:       {},
 	MonitorProviderDeepseek:    {},
+	MonitorProviderMinimax:     {},
+	MonitorProviderMiMo:        {},
 }
 
 // probeCapableProviders 支持探活（probe / quota_probe）的 provider。
@@ -36,6 +38,8 @@ var probeCapableProviders = map[string]struct{}{
 	MonitorProviderKimi:      {},
 	MonitorProviderZhipu:     {},
 	MonitorProviderDeepseek:  {},
+	MonitorProviderMinimax:   {},
+	MonitorProviderMiMo:      {},
 }
 
 // validateProvider 校验 provider 字符串。
@@ -85,19 +89,28 @@ func validateCheckMode(provider, checkMode string) error {
 }
 
 // validateAPIMode 校验 provider 与 api_mode 的组合。
-// responses 只对 OpenAI 有意义；其它 provider 使用 chat_completions 作为默认占位。
+// Responses 仅对提供原生端点的 provider 有意义。
 func validateAPIMode(provider, apiMode string) error {
 	apiMode = defaultAPIMode(apiMode)
 	switch apiMode {
 	case MonitorAPIModeChatCompletions:
 		return nil
 	case MonitorAPIModeResponses:
-		if provider == "" || provider == MonitorProviderOpenAI {
+		if provider == "" || monitorProviderSupportsResponses(provider) {
 			return nil
 		}
 		return ErrChannelMonitorInvalidAPIMode
 	default:
 		return ErrChannelMonitorInvalidAPIMode
+	}
+}
+
+func monitorProviderSupportsResponses(provider string) bool {
+	switch provider {
+	case MonitorProviderOpenAI, MonitorProviderDeepseek, MonitorProviderMinimax, MonitorProviderMiMo:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -219,14 +232,14 @@ func normalizeMonitorPrimaryModel(provider, checkMode, model string) string {
 //   - gemini/grok/antigravity：本地统计/值通道降级，不会永久 error，放行
 func monitorAccountQuotaCapability(account *Account) error {
 	switch account.Platform {
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMinimax, PlatformMiMo:
 		if account.IsCodingPlan() {
-			if p := account.GetCodingPlanProvider(); p != PlatformKimi && p != PlatformZhipu {
+			if !SupportsCodingPlanQuotaProbe(account.GetCodingPlanProvider()) {
 				return ErrChannelMonitorAccountNotSupportable
 			}
 			return nil
 		}
-		if account.Platform == PlatformZhipu {
+		if account.Platform != PlatformKimi && account.Platform != PlatformDeepseek {
 			return ErrChannelMonitorAccountNotSupportable
 		}
 		return nil

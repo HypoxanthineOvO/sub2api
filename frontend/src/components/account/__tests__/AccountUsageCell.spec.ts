@@ -54,6 +54,40 @@ function makeAccount(overrides: Partial<Account>): Account {
   }
 }
 
+function makeOllamaUsage(accountId: number, overrides: Partial<NonNullable<Account['ollama_cloud_usage']>> = {}) {
+  return {
+    account_id: accountId,
+    eligible: true,
+    configured: true,
+    auto_refresh_enabled: true,
+    encryption_key_configured: true,
+    snapshot: {
+      status: 'ok' as const,
+      last_attempt_at: '2026-07-23T00:00:00Z',
+      next_refresh_at: '2026-07-23T01:00:00Z',
+      data: {
+        five_hour: { used_percent: 12 },
+        seven_day: { used_percent: 34 }
+      }
+    },
+    ...overrides,
+  }
+}
+
+// CN 平台 Ollama Cloud 用例共用的子组件 stub：按 data-test 断言渲染与否
+const cnUsageCellStubs = {
+  OllamaCloudUsageCell: {
+    props: ['account'],
+    template: '<div data-test="embedded-ollama">ollama</div>'
+  },
+  CNProviderQuotaCell: {
+    template: '<div data-test="cn-quota-cell" />'
+  },
+  CNProviderBalanceCell: {
+    template: '<div data-test="cn-balance-cell" />'
+  }
+}
+
 describe('AccountUsageCell', () => {
   beforeEach(() => {
     getUsage.mockReset()
@@ -70,6 +104,52 @@ describe('AccountUsageCell', () => {
         dispatchEvent: vi.fn(),
       }))
     })
+  })
+
+  it.each(['mimo', 'hunyuan', 'qwen'])('shows an explicit console-only quota state for %s Token Plan', (platform) => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          platform,
+          type: 'apikey',
+          credentials: { account_mode: 'coding' }
+        })
+      },
+      global: {
+        stubs: {
+          CNProviderQuotaCell: true,
+          CNProviderBalanceCell: true
+        }
+      }
+    })
+
+    expect(wrapper.get('[data-test="quota-console-only"]').text()).toBe(
+      'admin.accounts.cnProviders.quotaConsoleOnly'
+    )
+		expect(getUsage).not.toHaveBeenCalled()
+  })
+
+  it('renders the quota cell for MiniMax Token Plan', () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          platform: 'minimax',
+          type: 'apikey',
+          credentials: { account_mode: 'coding' }
+        })
+      },
+      global: {
+        stubs: {
+          CNProviderQuotaCell: {
+				template: '<div data-test="minimax-quota-cell" />'
+			},
+          CNProviderBalanceCell: true
+        }
+      }
+    })
+
+		expect(wrapper.find('[data-test="quota-console-only"]').exists()).toBe(false)
+		expect(wrapper.find('[data-test="minimax-quota-cell"]').exists()).toBe(true)
   })
 
   it('renders eligible Ollama Cloud state and forwards query updates', async () => {
@@ -118,6 +198,92 @@ describe('AccountUsageCell', () => {
     const updatedAccount = wrapper.emitted<Account[]>('account-updated')?.[0]?.[0]
     expect(updatedAccount?.id).toBe(9001)
     expect(updatedAccount?.ollama_cloud_usage?.auto_refresh_enabled).toBe(false)
+  })
+
+  it.each(['kimi', 'zhipu', 'deepseek'] as const)(
+    '%s apikey 账号 Ollama Cloud eligible 时渲染 Ollama 用量单元格并跳过 CN 子单元格',
+    async (platform) => {
+      const wrapper = mount(AccountUsageCell, {
+        props: {
+          account: makeAccount({
+            id: 9002,
+            platform,
+            type: 'apikey',
+            credentials: { account_mode: 'coding' },
+            ollama_cloud_usage: makeOllamaUsage(9002)
+          })
+        },
+        global: {
+          stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+        }
+      })
+
+      await flushPromises()
+
+      expect(wrapper.find('[data-test="embedded-ollama"]').exists()).toBe(true)
+      expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(false)
+      expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(false)
+      expect(wrapper.find('div[title="admin.accounts.cnProviders.noBalanceEndpoint"]').exists()).toBe(false)
+      expect(getUsage).not.toHaveBeenCalled()
+    }
+  )
+
+  it('CN 平台 Ollama Cloud eligible 账号的用量更新经 account-updated 透传', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9003,
+          platform: 'kimi',
+          type: 'apikey',
+          credentials: { account_mode: 'coding' },
+          ollama_cloud_usage: makeOllamaUsage(9003)
+        })
+      },
+      global: {
+        stubs: {
+          ...cnUsageCellStubs,
+          OllamaCloudUsageCell: {
+            props: ['account'],
+            emits: ['updated'],
+            template: '<button data-test="embedded-ollama" @click="$emit(\'updated\', { ...account.ollama_cloud_usage, auto_refresh_enabled: false })" />'
+          },
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await wrapper.get('[data-test="embedded-ollama"]').trigger('click')
+
+    const updatedAccount = wrapper.emitted<Account[]>('account-updated')?.[0]?.[0]
+    expect(updatedAccount?.id).toBe(9003)
+    expect(updatedAccount?.ollama_cloud_usage?.auto_refresh_enabled).toBe(false)
+  })
+
+  it.each([
+    { name: '无 ollama_cloud_usage', usage: undefined },
+    { name: 'eligible=false', usage: makeOllamaUsage(9004, { eligible: false }) }
+  ])('普通 kimi apikey 账号（$name）仍渲染 CN 子单元格', async ({ usage }) => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9004,
+          platform: 'kimi',
+          type: 'apikey',
+          credentials: { account_mode: 'coding' },
+          ollama_cloud_usage: usage
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="embedded-ollama"]').exists()).toBe(false)
   })
 
   it('Antigravity 图片用量会聚合新旧 image 模型', async () => {
@@ -392,134 +558,134 @@ describe('AccountUsageCell', () => {
   })
 
   it('OpenAI OAuth 在无 codex 快照时会回退显示 usage 接口窗口', async () => {
-	getUsage.mockResolvedValue({
-	  five_hour: {
-	    utilization: 0,
-	    resets_at: null,
-	    remaining_seconds: 0,
-	    window_stats: {
-	      requests: 2,
-	      tokens: 27700,
-	      cost: 0.06,
-	      standard_cost: 0.06,
-	      user_cost: 0.06
-	    }
-	  },
-	  seven_day: {
-	    utilization: 0,
-	    resets_at: null,
-	    remaining_seconds: 0,
-	    window_stats: {
-	      requests: 2,
-	      tokens: 27700,
-	      cost: 0.06,
-	      standard_cost: 0.06,
-	      user_cost: 0.06
-	    }
-	  }
-	})
+  getUsage.mockResolvedValue({
+    five_hour: {
+      utilization: 0,
+      resets_at: null,
+      remaining_seconds: 0,
+      window_stats: {
+        requests: 2,
+        tokens: 27700,
+        cost: 0.06,
+        standard_cost: 0.06,
+        user_cost: 0.06
+      }
+    },
+    seven_day: {
+      utilization: 0,
+      resets_at: null,
+      remaining_seconds: 0,
+      window_stats: {
+        requests: 2,
+        tokens: 27700,
+        cost: 0.06,
+        standard_cost: 0.06,
+        user_cost: 0.06
+      }
+    }
+  })
 
-		const wrapper = mount(AccountUsageCell, {
-		  props: {
-		    account: makeAccount({
-		      id: 2002,
-		      platform: 'openai',
-		      type: 'oauth',
-		      extra: {}
-		    })
-		  },
-	  global: {
-	    stubs: {
-	      UsageProgressBar: {
-	        props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color'],
-	        template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ windowStats?.tokens }}</div>'
-	      },
-	      AccountQuotaInfo: true
-	    }
-	  }
-	})
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 2002,
+          platform: 'openai',
+          type: 'oauth',
+          extra: {}
+        })
+      },
+    global: {
+      stubs: {
+        UsageProgressBar: {
+          props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color'],
+          template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ windowStats?.tokens }}</div>'
+        },
+        AccountQuotaInfo: true
+      }
+    }
+  })
 
-	await flushPromises()
+  await flushPromises()
 
-	expect(getUsage).toHaveBeenCalledWith(2002)
-	expect(wrapper.text()).toContain('5h|0|27700')
-	expect(wrapper.text()).toContain('7d|0|27700')
+  expect(getUsage).toHaveBeenCalledWith(2002)
+  expect(wrapper.text()).toContain('5h|0|27700')
+  expect(wrapper.text()).toContain('7d|0|27700')
   })
 
   it('OpenAI OAuth 在行数据刷新但仍无 codex 快照时会重新拉取 usage', async () => {
-	getUsage
-	  .mockResolvedValueOnce({
-	    five_hour: {
-	      utilization: 0,
-	      resets_at: null,
-	      remaining_seconds: 0,
-	      window_stats: {
-	        requests: 1,
-	        tokens: 100,
-	        cost: 0.01,
-	        standard_cost: 0.01,
-	        user_cost: 0.01
-	      }
-	    },
-	    seven_day: null
-	  })
-	  .mockResolvedValueOnce({
-	    five_hour: {
-	      utilization: 0,
-	      resets_at: null,
-	      remaining_seconds: 0,
-	      window_stats: {
-	        requests: 2,
-	        tokens: 200,
-	        cost: 0.02,
-	        standard_cost: 0.02,
-	        user_cost: 0.02
-	      }
-	    },
-	    seven_day: null
-	  })
+  getUsage
+    .mockResolvedValueOnce({
+      five_hour: {
+        utilization: 0,
+        resets_at: null,
+        remaining_seconds: 0,
+        window_stats: {
+          requests: 1,
+          tokens: 100,
+          cost: 0.01,
+          standard_cost: 0.01,
+          user_cost: 0.01
+        }
+      },
+      seven_day: null
+    })
+    .mockResolvedValueOnce({
+      five_hour: {
+        utilization: 0,
+        resets_at: null,
+        remaining_seconds: 0,
+        window_stats: {
+          requests: 2,
+          tokens: 200,
+          cost: 0.02,
+          standard_cost: 0.02,
+          user_cost: 0.02
+        }
+      },
+      seven_day: null
+    })
 
-		const wrapper = mount(AccountUsageCell, {
-		  props: {
-		    account: makeAccount({
-		      id: 2003,
-		      platform: 'openai',
-		      type: 'oauth',
-		      updated_at: '2026-03-07T10:00:00Z',
-		      extra: {}
-		    })
-		  },
-	  global: {
-	    stubs: {
-	      UsageProgressBar: {
-	        props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color'],
-	        template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ windowStats?.tokens }}</div>'
-	      },
-	      AccountQuotaInfo: true
-	    }
-	  }
-	})
-
-	await flushPromises()
-	expect(wrapper.text()).toContain('5h|0|100')
-	expect(getUsage).toHaveBeenCalledTimes(1)
-
-	await wrapper.setProps({
-	  account: {
-	    id: 2003,
-	    platform: 'openai',
-	    type: 'oauth',
-	    updated_at: '2026-03-07T10:01:00Z',
-	    extra: {}
-	  }
-	})
-
-	await flushPromises()
-	expect(getUsage).toHaveBeenCalledTimes(2)
-	expect(wrapper.text()).toContain('5h|0|200')
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 2003,
+          platform: 'openai',
+          type: 'oauth',
+          updated_at: '2026-03-07T10:00:00Z',
+          extra: {}
+        })
+      },
+    global: {
+      stubs: {
+        UsageProgressBar: {
+          props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color'],
+          template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ windowStats?.tokens }}</div>'
+        },
+        AccountQuotaInfo: true
+      }
+    }
   })
 
-  it('OpenAI 重置响应更新账号行时不会额外拉取 usage', async () => {
+  await flushPromises()
+  expect(wrapper.text()).toContain('5h|0|100')
+  expect(getUsage).toHaveBeenCalledTimes(1)
+
+  await wrapper.setProps({
+    account: {
+      id: 2003,
+      platform: 'openai',
+      type: 'oauth',
+      updated_at: '2026-03-07T10:01:00Z',
+      extra: {}
+    }
+  })
+
+  await flushPromises()
+  expect(getUsage).toHaveBeenCalledTimes(2)
+  expect(wrapper.text()).toContain('5h|0|200')
+  })
+
+  it('OpenAI 重置响应更新账号行后重新拉取 usage', async () => {
     getUsage.mockResolvedValue({
       five_hour: {
         utilization: 0,
@@ -560,62 +726,62 @@ describe('AccountUsageCell', () => {
     await wrapper.setProps({ account: updatedAccount as Account })
     await flushPromises()
 
-    expect(getUsage).toHaveBeenCalledTimes(1)
+    expect(getUsage).toHaveBeenCalledTimes(2)
   })
 
   it('OpenAI OAuth 已限额时显示 /usage API 返回的限额数据', async () => {
-	getUsage.mockResolvedValue({
-	  five_hour: {
-	    utilization: 100,
-	    resets_at: '2026-03-07T12:00:00Z',
-	    remaining_seconds: 3600,
-	    window_stats: {
-	      requests: 211,
-	      tokens: 106540000,
-	      cost: 38.13,
-	      standard_cost: 38.13,
-	      user_cost: 38.13
-	    }
-	  },
-	  seven_day: {
-	    utilization: 100,
-	    resets_at: '2026-03-13T12:00:00Z',
-	    remaining_seconds: 3600,
-	    window_stats: {
-	      requests: 211,
-	      tokens: 106540000,
-	      cost: 38.13,
-	      standard_cost: 38.13,
-	      user_cost: 38.13
-	    }
-	  }
-	})
+  getUsage.mockResolvedValue({
+    five_hour: {
+      utilization: 100,
+      resets_at: '2026-03-07T12:00:00Z',
+      remaining_seconds: 3600,
+      window_stats: {
+        requests: 211,
+        tokens: 106540000,
+        cost: 38.13,
+        standard_cost: 38.13,
+        user_cost: 38.13
+      }
+    },
+    seven_day: {
+      utilization: 100,
+      resets_at: '2026-03-13T12:00:00Z',
+      remaining_seconds: 3600,
+      window_stats: {
+        requests: 211,
+        tokens: 106540000,
+        cost: 38.13,
+        standard_cost: 38.13,
+        user_cost: 38.13
+      }
+    }
+  })
 
-		const wrapper = mount(AccountUsageCell, {
-		  props: {
-		    account: makeAccount({
-		      id: 2004,
-		      platform: 'openai',
-		      type: 'oauth',
-		      rate_limit_reset_at: '2099-03-07T12:00:00Z',
-		      extra: {
-		        codex_5h_used_percent: 0,
-		        codex_7d_used_percent: 0
-		      }
-		    })
-		  },
-	  global: {
-	    stubs: {
-	      UsageProgressBar: {
-	        props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color'],
-	        template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ windowStats?.tokens }}</div>'
-	      },
-	      AccountQuotaInfo: true
-	    }
-	  }
-	})
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 2004,
+          platform: 'openai',
+          type: 'oauth',
+          rate_limit_reset_at: '2099-03-07T12:00:00Z',
+          extra: {
+            codex_5h_used_percent: 0,
+            codex_7d_used_percent: 0
+          }
+        })
+      },
+    global: {
+      stubs: {
+        UsageProgressBar: {
+          props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color'],
+          template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ windowStats?.tokens }}</div>'
+        },
+        AccountQuotaInfo: true
+      }
+    }
+  })
 
-	await flushPromises()
+  await flushPromises()
 
   expect(getUsage).toHaveBeenCalledWith(2004)
   expect(wrapper.text()).toContain('5h|100|106540000')
@@ -623,39 +789,39 @@ describe('AccountUsageCell', () => {
   })
 
   it('Key 账号会展示 today stats 徽章并带 A/U 提示', async () => {
-		const wrapper = mount(AccountUsageCell, {
-		  props: {
-		    account: makeAccount({
-		      id: 3001,
-		      platform: 'anthropic',
-		      type: 'apikey'
-		    }),
-		    todayStats: {
-		      requests: 1_000_000,
-		      tokens: 1_000_000_000,
-		      cost: 12.345,
-		      standard_cost: 12.345,
-		      user_cost: 6.789
-		    }
-		  },
-		  global: {
-		    stubs: {
-		      UsageProgressBar: true,
-		      AccountQuotaInfo: true
-		    }
-		  }
-		})
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 3001,
+          platform: 'anthropic',
+          type: 'apikey'
+        }),
+        todayStats: {
+          requests: 1_000_000,
+          tokens: 1_000_000_000,
+          cost: 12.345,
+          standard_cost: 12.345,
+          user_cost: 6.789
+        }
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
 
-		await flushPromises()
+    await flushPromises()
 
-		expect(wrapper.text()).toContain('1.0M req')
-		expect(wrapper.text()).toContain('1.0B')
-		expect(wrapper.text()).toContain('A $12.35')
-		expect(wrapper.text()).toContain('U $6.79')
+    expect(wrapper.text()).toContain('1.0M req')
+    expect(wrapper.text()).toContain('1.0B')
+    expect(wrapper.text()).toContain('A $12.35')
+    expect(wrapper.text()).toContain('U $6.79')
 
-		const badges = wrapper.findAll('span[title]')
-		expect(badges.some(node => node.attributes('title') === 'usage.accountBilled')).toBe(true)
-		expect(badges.some(node => node.attributes('title') === 'usage.userBilled')).toBe(true)
+    const badges = wrapper.findAll('span[title]')
+    expect(badges.some(node => node.attributes('title') === 'usage.accountBilled')).toBe(true)
+    expect(badges.some(node => node.attributes('title') === 'usage.userBilled')).toBe(true)
   })
 
   it('Grok OAuth compact UI drops local chips and header quota bars', async () => {
@@ -1257,93 +1423,93 @@ describe('AccountUsageCell', () => {
   })
 
   it('Key 账号在 today stats loading 时显示骨架屏', async () => {
-		const wrapper = mount(AccountUsageCell, {
-		  props: {
-		    account: makeAccount({
-		      id: 3002,
-		      platform: 'anthropic',
-		      type: 'apikey'
-		    }),
-		    todayStats: null,
-		    todayStatsLoading: true
-		  },
-		  global: {
-		    stubs: {
-		      UsageProgressBar: true,
-		      AccountQuotaInfo: true
-		    }
-		  }
-		})
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 3002,
+          platform: 'anthropic',
+          type: 'apikey'
+        }),
+        todayStats: null,
+        todayStatsLoading: true
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
 
-		await flushPromises()
+    await flushPromises()
 
-		expect(wrapper.findAll('.animate-pulse').length).toBeGreaterThan(0)
+    expect(wrapper.findAll('.animate-pulse').length).toBeGreaterThan(0)
   })
 
   it('Key 账号在无 today stats 且无配额时显示兜底短横线', async () => {
-		const wrapper = mount(AccountUsageCell, {
-		  props: {
-		    account: makeAccount({
-		      id: 3003,
-		      platform: 'anthropic',
-		      type: 'apikey',
-		      quota_limit: 0,
-		      quota_daily_limit: 0,
-		      quota_weekly_limit: 0
-		    }),
-		    todayStats: null,
-		    todayStatsLoading: false
-		  },
-		  global: {
-		    stubs: {
-		      UsageProgressBar: true,
-		      AccountQuotaInfo: true
-		    }
-		  }
-		})
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 3003,
+          platform: 'anthropic',
+          type: 'apikey',
+          quota_limit: 0,
+          quota_daily_limit: 0,
+          quota_weekly_limit: 0
+        }),
+        todayStats: null,
+        todayStatsLoading: false
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
 
-		await flushPromises()
+    await flushPromises()
 
-		expect(wrapper.text().trim()).toBe('-')
+    expect(wrapper.text().trim()).toBe('-')
   })
 
   it('Vertex 账号会在 Gemini 用量窗口里展示 today stats 徽章', async () => {
-		const wrapper = mount(AccountUsageCell, {
-		  props: {
-		    account: makeAccount({
-		      id: 4001,
-		      platform: 'gemini',
-		      type: 'service_account',
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 4001,
+          platform: 'gemini',
+          type: 'service_account',
           credentials: {
             tier_id: 'vertex',
             project_id: 'vertex-proj',
             client_email: 'svc@vertex-proj.iam.gserviceaccount.com',
             location: 'global'
           },
-		      extra: {}
-		    }),
-		    todayStats: {
-		      requests: 0,
-		      tokens: 0,
-		      cost: 0,
-		      standard_cost: 0,
-		      user_cost: 0
-		    }
-		  },
-		  global: {
-		    stubs: {
-		      UsageProgressBar: true,
-		      AccountQuotaInfo: true
-		    }
-		  }
-		})
+          extra: {}
+        }),
+        todayStats: {
+          requests: 0,
+          tokens: 0,
+          cost: 0,
+          standard_cost: 0,
+          user_cost: 0
+        }
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
 
-		await flushPromises()
+    await flushPromises()
 
-		expect(wrapper.text()).toContain('0 req')
-		expect(wrapper.text()).toContain('0')
-		expect(wrapper.text()).toContain('A $0.00')
-		expect(wrapper.text()).toContain('U $0.00')
+    expect(wrapper.text()).toContain('0 req')
+    expect(wrapper.text()).toContain('0')
+    expect(wrapper.text()).toContain('A $0.00')
+    expect(wrapper.text()).toContain('U $0.00')
   })
 
   it('Anthropic OAuth 会渲染 7d F (Fable) 进度条，且 7d S 逻辑保留', async () => {

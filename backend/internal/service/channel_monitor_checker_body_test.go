@@ -87,7 +87,7 @@ func (h *openAICaptureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	}
 
 	answer := answerFromOpenAIRequest(parsed)
-	if h.lastPath == providerOpenAIResponsesPath {
+	if h.lastPath == providerOpenAIResponsesPath || h.lastPath == providerDeepseekResponsesPath {
 		output := []map[string]any{}
 		if h.responsesLeadingReasoning {
 			output = append(output, map[string]any{
@@ -312,6 +312,36 @@ func TestRunCheckForModel_OpenAIResponses_DefaultRequest(t *testing.T) {
 	}
 	if h.lastHeaders.Get("Authorization") != "Bearer sk-openai" {
 		t.Errorf("expected bearer auth header, got %q", h.lastHeaders.Get("Authorization"))
+	}
+}
+
+func TestRunCheckForModel_NativeResponsesProviders(t *testing.T) {
+	for _, tc := range []struct {
+		provider string
+		model    string
+		path     string
+	}{
+		{provider: MonitorProviderDeepseek, model: "deepseek-v4", path: providerDeepseekResponsesPath},
+		{provider: MonitorProviderMinimax, model: "MiniMax-M3", path: providerOpenAIResponsesPath},
+		{provider: MonitorProviderMiMo, model: "mimo-v2.5", path: providerOpenAIResponsesPath},
+	} {
+		t.Run(tc.provider, func(t *testing.T) {
+			h := &openAICaptureHandler{}
+			endpoint := setupFakeOpenAI(t, h)
+			res := runCheckForModel(context.Background(), tc.provider, endpoint, "provider-key", tc.model, &CheckOptions{
+				APIMode: MonitorAPIModeResponses,
+			})
+
+			if res.Status != MonitorStatusOperational {
+				t.Fatalf("responses request should pass challenge, got status=%s message=%q", res.Status, res.Message)
+			}
+			if h.lastPath != tc.path {
+				t.Fatalf("expected responses path %q, got %q", tc.path, h.lastPath)
+			}
+			if h.lastHeaders.Get("Authorization") != "Bearer provider-key" {
+				t.Fatalf("expected Bearer auth, got %q", h.lastHeaders.Get("Authorization"))
+			}
+		})
 	}
 }
 

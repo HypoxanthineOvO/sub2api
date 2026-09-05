@@ -18,17 +18,19 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
-// 国产供应商 Coding Plan 滚动窗口额度探测服务（Kimi For Coding / 智谱 GLM Coding Plan）。
+// 国产供应商 Coding Plan 滚动窗口额度探测服务（Kimi / 智谱 / MiniMax）。
 //
 // 与 grok_quota_service 不同：CN 供应商走数据面 API Key（无 OAuth token provider），
 // 额度端点为只读 GET，解析 5h + weekly 两档滚动窗口并落 account.Extra 快照，
 // 供账号调度阈值评估（account_scheduling_threshold_eval.go）做主动停调。
+// MiniMax 使用官方 model_remains.general 的 remaining_percent 与窗口结束时间。
 //
 // 解析逻辑对齐 cc-switch（farion1231/cc-switch）services/coding_plan.rs 的
 // query_kimi / query_zhipu，包括智谱 unit 字段优先分类与 reset 兜底启发式。
 const (
 	cnQuotaUpstreamTimeout = 15 * time.Second
 	cnQuotaMaxBodyBytes    = 256 * 1024
+	minimaxQuotaURL        = "https://www.minimaxi.com/v1/token_plan/remains"
 
 	// Extra 快照键后缀（加 provider 前缀，如 kimi_5h_used_percent）。
 	cnExtraSuffix5hUsed       = "5h_used_percent"
@@ -62,7 +64,7 @@ type CNProviderQuotaProbeResult struct {
 	Error           string        `json:"error,omitempty"`
 }
 
-// CNProviderQuotaService 探测 Kimi / Zhipu Coding Plan 的滚动窗口用量。
+// CNProviderQuotaService 探测国产供应商 Coding Plan 的滚动窗口用量。
 type CNProviderQuotaService struct {
 	accountRepo  AccountRepository
 	proxyRepo    ProxyRepository
@@ -129,8 +131,8 @@ func (s *CNProviderQuotaService) QueryUsageForAccount(ctx context.Context, accou
 
 func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, account *Account) (*CNProviderQuotaProbeResult, error) {
 	provider := account.GetCodingPlanProvider()
-	if provider != PlatformKimi && provider != PlatformZhipu {
-		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a kimi/zhipu coding plan account")
+	if !SupportsCodingPlanQuotaProbe(provider) {
+		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_UNSUPPORTED_PLATFORM", "coding plan quota probing is not available for this platform")
 	}
 
 	apiKey := strings.TrimSpace(account.GetCNAPIKey())
@@ -142,6 +144,7 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	var (
 		targetURL  string
 		authHeader string
+		zhipuOrg   string
 	)
 	switch provider {
 	case PlatformKimi:
@@ -150,6 +153,15 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	case PlatformZhipu:
 		targetURL = zhipuQuotaURL(baseURL)
 		authHeader = apiKey // 智谱额度端点鉴权不加 Bearer 前缀
+		zhipuOrg = strings.TrimSpace(account.GetCredential("zhipu_organization"))
+		if zhipuOrg != "" {
+			targetURL += "?type=2"
+		}
+	case PlatformMinimax:
+		// Token Plan 额度 API 不与推理 base_url 同源，固定官方端点以避免
+		// 把订阅 key 发往账号自定义的数据面地址。
+		targetURL = minimaxQuotaURL
+		authHeader = "Bearer " + apiKey
 	}
 
 	// 探测发起前过出站 URL 安全策略（与网关转发/Grok 探测同一套校验）：
@@ -169,9 +181,17 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	}
 	req.Header.Set("Authorization", authHeader)
 	req.Header.Set("Accept", "application/json")
-	if provider == PlatformZhipu {
+	if provider == PlatformZhipu || provider == PlatformMinimax {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if provider == PlatformZhipu {
 		req.Header.Set("Accept-Language", "en-US,en")
+		if zhipuOrg != "" {
+			req.Header.Set("bigmodel-organization", zhipuOrg)
+			if project := strings.TrimSpace(account.GetCredential("zhipu_project")); project != "" {
+				req.Header.Set("bigmodel-project", project)
+			}
+		}
 	}
 	// 探测与真实转发保持同一套账号级请求头覆写，避免探测通过但转发失败。
 	account.ApplyHeaderOverrides(req.Header)
@@ -212,6 +232,24 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 			return result, nil
 		}
 	}
+	if provider == PlatformMinimax {
+		statusCode, statusMessage, statusErr := minimaxBaseResponseStatus(bodyBytes)
+		if statusErr != nil {
+			result.CredentialValid = true
+			result.Error = "Invalid quota response: " + statusErr.Error()
+			return result, nil
+		}
+		if statusCode != 0 {
+			// MiniMax 对错误 API key 返回 HTTP 200 + base_resp.status_code=1004。
+			// 其他业务错误不能武断归类为凭据失效。
+			result.CredentialValid = statusCode != 1004
+			if statusMessage == "" {
+				statusMessage = "unknown MiniMax API error"
+			}
+			result.Error = fmt.Sprintf("API error (code %d): %s", statusCode, statusMessage)
+			return result, nil
+		}
+	}
 
 	var tiers []CNQuotaTier
 	switch provider {
@@ -220,6 +258,16 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	case PlatformZhipu:
 		tiers = parseZhipuTokenTiers(gjson.GetBytes(bodyBytes, "data"))
 		result.PlanLevel = strings.TrimSpace(gjson.GetBytes(bodyBytes, "data.level").String())
+	case PlatformMinimax:
+		var parseErr error
+		tiers, parseErr = parseMinimaxUsageTiers(bodyBytes)
+		if parseErr != nil {
+			// HTTP 2xx 只能证明凭据被上游接受；未知 schema 不得落空快照或
+			// 被监控器视作一次成功探测。
+			result.CredentialValid = true
+			result.Error = "Invalid quota response: " + parseErr.Error()
+			return result, nil
+		}
 	}
 	result.Tiers = tiers
 	result.Success = true
@@ -232,6 +280,82 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 		result.Persisted = true
 	}
 	return result, nil
+}
+
+// minimaxBaseResponseStatus 只解析官方错误响应中已确认的 base_resp 状态信封。
+// status_code 缺失或不是 JSON number 时 fail-closed，不能把未知 2xx 当成功。
+func minimaxBaseResponseStatus(body []byte) (int64, string, error) {
+	if !gjson.ValidBytes(body) {
+		return 0, "", fmt.Errorf("response is not valid JSON")
+	}
+	status := gjson.GetBytes(body, "base_resp.status_code")
+	if !status.Exists() || status.Type != gjson.Number {
+		return 0, "", fmt.Errorf("missing numeric base_resp.status_code")
+	}
+	message := strings.TrimSpace(gjson.GetBytes(body, "base_resp.status_msg").String())
+	return status.Int(), message, nil
+}
+
+// parseMinimaxUsageTiers parses the verified Token Plan response schema.
+// Only the general model pool drives LLM scheduling; video has independent
+// windows and must never be folded into these thresholds.
+func parseMinimaxUsageTiers(body []byte) ([]CNQuotaTier, error) {
+	if !gjson.ValidBytes(body) {
+		return nil, fmt.Errorf("response is not valid JSON")
+	}
+	modelRemains := gjson.GetBytes(body, "model_remains")
+	if !modelRemains.IsArray() {
+		return nil, fmt.Errorf("missing model_remains array")
+	}
+
+	var general gjson.Result
+	modelRemains.ForEach(func(_, item gjson.Result) bool {
+		if strings.EqualFold(strings.TrimSpace(item.Get("model_name").String()), "general") {
+			general = item
+			return false
+		}
+		return true
+	})
+	if !general.Exists() {
+		return nil, fmt.Errorf("missing general model quota")
+	}
+
+	fiveHour, err := parseMinimaxQuotaWindow(
+		general,
+		"5h",
+		"current_interval_remaining_percent",
+		"end_time",
+	)
+	if err != nil {
+		return nil, err
+	}
+	weekly, err := parseMinimaxQuotaWindow(
+		general,
+		"weekly",
+		"current_weekly_remaining_percent",
+		"weekly_end_time",
+	)
+	if err != nil {
+		return nil, err
+	}
+	return []CNQuotaTier{fiveHour, weekly}, nil
+}
+
+func parseMinimaxQuotaWindow(item gjson.Result, window, remainingKey, endKey string) (CNQuotaTier, error) {
+	remainingResult := item.Get(remainingKey)
+	remaining, ok := cnParseF64(remainingResult.Value())
+	if !remainingResult.Exists() || !ok || remaining < 0 || remaining > 100 {
+		return CNQuotaTier{}, fmt.Errorf("invalid %s", remainingKey)
+	}
+	resetAt := cnNormalizeResetTime(item.Get(endKey).Value())
+	if resetAt == "" {
+		return CNQuotaTier{}, fmt.Errorf("invalid %s", endKey)
+	}
+	return CNQuotaTier{
+		Window:      window,
+		UsedPercent: 100 - remaining,
+		ResetAt:     resetAt,
+	}, nil
 }
 
 func (s *CNProviderQuotaService) loadCodingPlanAccount(ctx context.Context, accountID int64) (*Account, error) {
@@ -256,6 +380,9 @@ func validateCodingPlanAccount(account *Account) error {
 	}
 	if !account.IsCodingPlan() {
 		return infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a coding plan account")
+	}
+	if !SupportsCodingPlanQuotaProbe(account.Platform) {
+		return infraerrors.New(http.StatusBadRequest, "CN_QUOTA_UNSUPPORTED_PLATFORM", "coding plan quota probing is not available for this platform")
 	}
 	return nil
 }

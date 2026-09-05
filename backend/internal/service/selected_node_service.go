@@ -75,7 +75,11 @@ func NewSelectedNodeService(cfg *config.Config) *SelectedNodeService {
 	if timeout <= 0 {
 		timeout = 800 * time.Millisecond
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	baseTransport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		baseTransport = &http.Transport{}
+	}
+	transport := baseTransport.Clone()
 	transport.Proxy = nil
 	transport.DialContext = selectedNodeDialContext
 	return &SelectedNodeService{
@@ -264,7 +268,7 @@ func (s *SelectedNodeService) fetch(ctx context.Context) (map[string]selectedNod
 	if err != nil {
 		return nil, errors.New("selected-node request failed")
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("selected-node response status %d", resp.StatusCode)
 	}

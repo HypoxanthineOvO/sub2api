@@ -31,27 +31,31 @@ func TestLabDashboardSwitchesUsesFullRequestChain(t *testing.T) {
 }
 
 func TestLabDashboardAccountBillingNormalizesSubscriptionQuotaWindows(t *testing.T) {
-	account := &Account{
-		Platform:    PlatformZhipu,
-		Type:        AccountTypeAPIKey,
-		Credentials: map[string]any{"account_mode": AccountModeCoding, "api_key": "must-not-be-projected"},
-		Extra: map[string]any{
-			"zhipu_5h_used_percent":     13.0,
-			"zhipu_5h_reset_at":         "2026-08-20T19:02:11Z",
-			"zhipu_weekly_used_percent": 92.0,
-			"zhipu_weekly_reset_at":     "2026-08-21T06:38:44Z",
-		},
+	for _, platform := range []string{PlatformZhipu, PlatformMinimax} {
+		t.Run(platform, func(t *testing.T) {
+			account := &Account{
+				Platform:    platform,
+				Type:        AccountTypeAPIKey,
+				Credentials: map[string]any{"account_mode": AccountModeCoding, "api_key": "must-not-be-projected"},
+				Extra: map[string]any{
+					platform + "_5h_used_percent":     13.0,
+					platform + "_5h_reset_at":         "2026-08-20T19:02:11Z",
+					platform + "_weekly_used_percent": 92.0,
+					platform + "_weekly_reset_at":     "2026-08-21T06:38:44Z",
+				},
+			}
+
+			mode, windows, balances, low := labDashboardAccountBilling(account)
+
+			require.Equal(t, AccountModeCoding, mode)
+			require.Equal(t, []LabDashboardQuotaWindow{
+				{Window: "5h", UsedPercent: 13, ResetAt: "2026-08-20T19:02:11Z"},
+				{Window: "weekly", UsedPercent: 92, ResetAt: "2026-08-21T06:38:44Z"},
+			}, windows)
+			require.Nil(t, balances)
+			require.False(t, low)
+		})
 	}
-
-	mode, windows, balances, low := labDashboardAccountBilling(account)
-
-	require.Equal(t, AccountModeCoding, mode)
-	require.Equal(t, []LabDashboardQuotaWindow{
-		{Window: "5h", UsedPercent: 13, ResetAt: "2026-08-20T19:02:11Z"},
-		{Window: "weekly", UsedPercent: 92, ResetAt: "2026-08-21T06:38:44Z"},
-	}, windows)
-	require.Nil(t, balances)
-	require.False(t, low)
 }
 
 func TestLabDashboardAccountBillingProjectsPayGBalances(t *testing.T) {

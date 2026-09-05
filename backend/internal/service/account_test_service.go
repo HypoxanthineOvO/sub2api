@@ -147,6 +147,9 @@ type AccountTestService struct {
 	cfg                       *config.Config
 	settingService            *SettingService
 	tlsFPProfileService       *TLSFingerprintProfileService
+	modelMetadataRegistryMu   sync.Mutex
+	modelMetadataRegistry     map[string]modelsDevProvider
+	modelMetadataRegistryAt   time.Time
 	pluginManager             *PluginManager
 	agentIdentityTaskMu       sync.Mutex
 	agentIdentityWS           agentIdentityWSConnectionInvalidator
@@ -294,16 +297,8 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 
 	// Route to platform-specific test method
 	if account.IsCNProvider() {
-		switch account.GetAPIProtocol() {
-		case APIProtocolAdaptive:
-			return s.testCNProviderAdaptiveConnection(c, account, modelID, prompt)
-		case APIProtocolResponses:
-			return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
-		case APIProtocolChatCompletions:
-			return s.testCNProviderChatCompletionsConnection(c, account, modelID, prompt)
-		case APIProtocolAnthropic:
-			return s.testCNProviderAnthropicConnection(c, account, modelID)
-		}
+		modelID = cnProviderTestModel(account, modelID)
+		return s.testCNProviderAccountConnection(c, account, modelID, prompt, mode)
 	}
 
 	if account.IsOpenAI() {
@@ -323,6 +318,52 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
+}
+
+func (s *AccountTestService) testCNProviderAccountConnection(c *gin.Context, account *Account, modelID, prompt string, mode ...string) error {
+	accountTestMode := AccountTestModeDefault
+	if len(mode) > 0 {
+		accountTestMode = normalizeAccountTestMode(mode[0])
+	}
+	switch account.GetAPIProtocol() {
+	case APIProtocolAdaptive:
+		return s.testCNProviderAdaptiveConnection(c, account, modelID, prompt)
+	case APIProtocolResponses:
+		return s.testOpenAIAccountConnection(c, account, modelID, prompt, accountTestMode)
+	case APIProtocolChatCompletions:
+		return s.testCNProviderChatCompletionsConnection(c, account, modelID, prompt)
+	case APIProtocolAnthropic:
+		return s.testCNProviderAnthropicConnection(c, account, modelID)
+	default:
+		return s.sendErrorAndEnd(c, "Unsupported CN provider API protocol")
+	}
+}
+
+func cnProviderTestModel(account *Account, requested string) string {
+	if requested = strings.TrimSpace(requested); requested != "" {
+		return requested
+	}
+	if account == nil {
+		return openai.DefaultTestModel
+	}
+	switch account.Platform {
+	case PlatformKimi:
+		return "kimi-k2.5"
+	case PlatformZhipu:
+		return "glm-4.7"
+	case PlatformDeepseek:
+		return "deepseek-chat"
+	case PlatformMinimax:
+		return "MiniMax-M3"
+	case PlatformMiMo:
+		return "mimo-v2.5"
+	case PlatformHunyuan:
+		return "hy3"
+	case PlatformQwen:
+		return "qwen3.7-plus"
+	default:
+		return openai.DefaultTestModel
+	}
 }
 
 func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Context, account *Account, modelID string, prompt string) error {

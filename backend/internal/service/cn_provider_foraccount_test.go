@@ -46,6 +46,8 @@ func TestValidateCodingPlanAccount_Matrix(t *testing.T) {
 		{name: "payg has no quota endpoint", account: paygAccount(PlatformKimi), wantReason: "CN_QUOTA_NOT_CODING_PLAN"},
 		{name: "kimi coding ok", account: codingAccount(PlatformKimi)},
 		{name: "zhipu coding ok", account: codingAccount(PlatformZhipu)},
+		{name: "minimax token plan ok", account: codingAccount(PlatformMinimax)},
+		{name: "mimo token plan has no quota endpoint", account: codingAccount(PlatformMiMo), wantReason: "CN_QUOTA_UNSUPPORTED_PLATFORM"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -70,6 +72,8 @@ func TestValidatePayGAccount_Matrix(t *testing.T) {
 		{name: "coding has no balance endpoint", account: codingAccount(PlatformKimi), wantReason: "CN_BALANCE_CODING_PLAN"},
 		{name: "kimi payg ok", account: paygAccount(PlatformKimi)},
 		{name: "deepseek payg ok", account: paygAccount(PlatformDeepseek)},
+		{name: "minimax payg mode ok", account: paygAccount(PlatformMinimax)},
+		{name: "mimo payg mode ok", account: paygAccount(PlatformMiMo)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -96,6 +100,10 @@ func TestCNProviderQuotaService_QueryUsageForAccount_RejectsInvalidAccount(t *te
 	_, err = svc.QueryUsageForAccount(context.Background(), nil)
 	requireReason(t, err, "CN_QUOTA_ACCOUNT_NOT_FOUND")
 	require.Zero(t, upstream.calls)
+
+	_, err = svc.QueryUsageForAccount(context.Background(), codingAccount(PlatformMiMo))
+	requireReason(t, err, "CN_QUOTA_UNSUPPORTED_PLATFORM")
+	require.Zero(t, upstream.calls)
 }
 
 func TestCNProviderBalanceService_QueryBalanceForAccount_RejectsInvalidAccount(t *testing.T) {
@@ -109,6 +117,14 @@ func TestCNProviderBalanceService_QueryBalanceForAccount_RejectsInvalidAccount(t
 
 	_, err = svc.QueryBalanceForAccount(context.Background(), &Account{ID: 9, Platform: PlatformAnthropic})
 	requireReason(t, err, "CN_BALANCE_INVALID_PLATFORM")
+	require.Zero(t, upstream.calls)
+
+	_, err = svc.QueryBalanceForAccount(context.Background(), paygAccount(PlatformMinimax))
+	requireReason(t, err, "CN_BALANCE_NO_ENDPOINT")
+	require.Zero(t, upstream.calls)
+
+	_, err = svc.QueryBalanceForAccount(context.Background(), paygAccount(PlatformMiMo))
+	requireReason(t, err, "CN_BALANCE_NO_ENDPOINT")
 	require.Zero(t, upstream.calls)
 }
 

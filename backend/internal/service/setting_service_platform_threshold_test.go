@@ -63,7 +63,9 @@ func TestValidateAndNormalizeAccountSchedulingThresholds_FillsMissingPlatforms(t
 	require.Equal(t, 91, normalized[PlatformOpenAI])
 	require.Equal(t, 100, normalized[PlatformAnthropic])
 	require.Equal(t, 100, normalized[PlatformGrok])
+	require.Equal(t, 100, normalized[PlatformMinimax])
 	require.NotContains(t, normalized, PlatformGemini)
+	require.NotContains(t, normalized, PlatformMiMo)
 	require.NotContains(t, normalized, "kiro")
 	require.NotContains(t, normalized, PlatformAntigravity)
 }

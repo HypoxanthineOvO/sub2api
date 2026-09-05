@@ -119,6 +119,13 @@ backend/.installed
 tests
 !deploy/tests/
 !deploy/tests/**
+!ops/llm-proxy/tests/
+!ops/llm-proxy/tests/**
+ops/llm-proxy/__pycache__/
+ops/llm-proxy/tests/__pycache__/
+ops/mihomo/__pycache__/
+ops/selected-node/__pycache__/
+ops/llm-proxy/tests/__pycache__/
 CLAUDE.md
 .claude
 scripts

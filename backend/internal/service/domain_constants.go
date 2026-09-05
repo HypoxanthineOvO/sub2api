@@ -47,6 +47,10 @@ const (
 	PlatformKimi      = domain.PlatformKimi
 	PlatformZhipu     = domain.PlatformZhipu
 	PlatformDeepseek  = domain.PlatformDeepseek
+	PlatformMinimax   = domain.PlatformMinimax
+	PlatformMiMo      = domain.PlatformMiMo
+	PlatformHunyuan   = domain.PlatformHunyuan
+	PlatformQwen      = domain.PlatformQwen
 	PlatformComposite = domain.PlatformComposite
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
@@ -75,6 +79,14 @@ const (
 	DefaultZhipuPayGBaseURL   = "https://open.bigmodel.cn/api/paas/v4"
 	DefaultZhipuCodingBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
 	DefaultDeepseekBaseURL    = "https://api.deepseek.com"
+	DefaultMinimaxBaseURL     = "https://api.minimaxi.com/v1"
+	DefaultMiMoPayGBaseURL    = "https://api.xiaomimimo.com/v1"
+	DefaultMiMoCodingBaseURL  = "https://token-plan-cn.xiaomimimo.com/v1"
+	// PAYG/enterprise TokenHub is the production-safe Hunyuan endpoint. Personal
+	// Hy/Coding plans use api.lkeap.cloud.tencent.com and are not valid relay keys.
+	DefaultHunyuanBaseURL          = "https://tokenhub.tencentmaas.com/v1"
+	DefaultHunyuanTokenPlanBaseURL = "https://api.lkeap.cloud.tencent.com/plan/v3"
+	DefaultQwenBaseURL             = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 )
 
 // 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
@@ -84,16 +96,63 @@ const (
 	DefaultKimiCodingAnthropicBaseURL = "https://api.kimi.com/coding"
 	DefaultZhipuAnthropicBaseURL      = "https://open.bigmodel.cn/api/anthropic"
 	DefaultDeepseekAnthropicBaseURL   = "https://api.deepseek.com/anthropic"
+	DefaultMinimaxAnthropicBaseURL    = "https://api.minimaxi.com/anthropic"
+	DefaultMiMoPayGAnthropicBaseURL   = "https://api.xiaomimimo.com/anthropic"
+	DefaultMiMoCodingAnthropicBaseURL = "https://token-plan-cn.xiaomimimo.com/anthropic"
 )
 
-// IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）。
+// IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商。
 func IsCNProvider(platform string) bool {
 	switch platform {
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMinimax, PlatformMiMo, PlatformHunyuan, PlatformQwen:
 		return true
 	default:
 		return false
 	}
+}
+
+// SupportsNativeResponses 报告国产供应商是否提供原生 OpenAI Responses 端点。
+func SupportsNativeResponses(platform string) bool {
+	switch platform {
+	case PlatformDeepseek, PlatformMinimax, PlatformMiMo:
+		return true
+	default:
+		return false
+	}
+}
+
+// SupportsCodingPlanQuotaProbe 报告 Coding Plan 是否有受支持的公开额度查询端点。
+func SupportsCodingPlanQuotaProbe(platform string) bool {
+	switch platform {
+	case PlatformKimi, PlatformZhipu, PlatformMinimax:
+		return true
+	default:
+		return false
+	}
+}
+
+// DefaultCNProviderModelIDs returns curated current model IDs for providers
+// whose public catalog is stable enough to serve when no account mapping has
+// been synchronized yet. Older CN integrations intentionally keep their
+// mapping-only behavior.
+func DefaultCNProviderModelIDs(platform string) []string {
+	var models []string
+	switch platform {
+	case PlatformMinimax:
+		models = []string{
+			"MiniMax-M3",
+			"MiniMax-M2.7", "MiniMax-M2.7-highspeed",
+			"MiniMax-M2.5", "MiniMax-M2.5-highspeed",
+			"MiniMax-M2.1", "MiniMax-M2.1-highspeed", "MiniMax-M2",
+		}
+	case PlatformMiMo:
+		models = []string{"mimo-v2.5", "mimo-v2.5-pro"}
+	case PlatformHunyuan:
+		models = []string{"hy4-preview", "hy3", "hy3-preview", "hy-mt2-pro", "hy-mt2-plus", "hy-mt2-lite", "hunyuan-role-latest", "hy-role"}
+	case PlatformQwen:
+		models = []string{"qwen3.8-max", "qwen3.8-flash", "qwen3.7-max", "qwen3.7-max-2026-06-08", "qwen3.7-max-2026-05-20", "qwen3.7-max-preview", "qwen3.7-max-2026-05-17", "qwen3.7-plus", "qwen3.7-plus-2026-05-26", "qwen3.6-plus", "qwen3.6-plus-2026-04-02", "qwen3.5-plus", "qwen3.5-plus-2026-02-15", "qwen3-max", "qwen3-max-2026-01-23", "qwen3-coder-plus", "qwen3-coder-plus-2025-09-23", "qwen3-coder-plus-2025-07-22", "qwen3-coder-flash", "qwen3-coder-next", "qwen3-coder-480b-a35b-instruct", "qwen3-coder-30b-a3b-instruct", "qwen-max"}
+	}
+	return append([]string(nil), models...)
 }
 
 // AllowedQuotaPlatforms 是允许设置 user × platform quota 的平台列表（单一权威来源）。
@@ -108,17 +167,22 @@ var AllowedQuotaPlatforms = []string{
 	PlatformKimi,
 	PlatformZhipu,
 	PlatformDeepseek,
+	PlatformMinimax,
+	PlatformMiMo,
+	PlatformHunyuan,
+	PlatformQwen,
 }
 
 // AllowedSchedulingThresholdPlatforms 是允许设置账号自动停调阈值的平台列表。
-// openai/anthropic/grok 有原生用量窗口；kimi/zhipu 的 Coding Plan 同样暴露 5h/weekly
-// 滚动窗口，纳入阈值评估。deepseek 为余额型，走余额检测而非阈值。
+// openai/anthropic/grok 有原生用量窗口；kimi/zhipu/minimax 的 Coding Plan
+// 同样暴露 5h/weekly 滚动窗口，纳入阈值评估。deepseek 为余额型。
 var AllowedSchedulingThresholdPlatforms = []string{
 	PlatformOpenAI,
 	PlatformAnthropic,
 	PlatformGrok,
 	PlatformKimi,
 	PlatformZhipu,
+	PlatformMinimax,
 }
 
 // IsAllowedQuotaPlatform 报告 s 是否为合法的 quota platform 标识。
@@ -537,6 +601,8 @@ const (
 
 	// SettingKeyRateLimit429CooldownSettings stores JSON config for 429 fallback cooldown handling.
 	SettingKeyRateLimit429CooldownSettings = "rate_limit_429_cooldown_settings"
+	// SettingKeyOpenAIImagesOAuthUnavailableCooldownSettings stores the cooldown applied when the OAuth image tool is unavailable.
+	SettingKeyOpenAIImagesOAuthUnavailableCooldownSettings = "openai_images_oauth_unavailable_cooldown_settings"
 	// SettingKeyOpenAIAPIKeyHealthBreakerSettings stores the opt-in OpenAI pool API-key breaker config.
 	SettingKeyOpenAIAPIKeyHealthBreakerSettings = "openai_apikey_health_breaker_settings"
 
@@ -618,6 +684,10 @@ const (
 	SettingKeyBackendModeEnabled = "backend_mode_enabled"
 
 	// Gateway Forwarding Behavior
+	// SettingKeyOpenAITTFTMode 控制 first_token_ms 的统计口径。
+	SettingKeyOpenAITTFTMode = "openai_ttft_mode"
+	OpenAITTFTModeSemantic   = "semantic"
+	OpenAITTFTModeVisible    = "visible"
 	// SettingKeyEnableFingerprintUnification 是否统一 OAuth 账号的 X-Stainless-* 指纹头（默认 true）
 	SettingKeyEnableFingerprintUnification = "enable_fingerprint_unification"
 	// SettingKeyEnableMetadataPassthrough 是否透传客户端原始 metadata.user_id（默认 false）

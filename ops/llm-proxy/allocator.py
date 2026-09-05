@@ -8,6 +8,7 @@ import concurrent.futures
 import fcntl
 import json
 import os
+import secrets
 import sys
 import tempfile
 import time
@@ -15,7 +16,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 HOME = Path.home()
@@ -28,7 +29,11 @@ FAILURES_BEFORE_EVICT = 3
 MAX_DELAY_MS = 4000
 EWMA_NEW_WEIGHT = 0.4
 STICKY_FACTOR = 0.75
-MAIN_SOURCE_PENALTY_MS = 1200
+PRIMARY_SOURCES = frozenset(("lilis", "main"))
+FALLBACK_SOURCES = frozenset(("westdata", "family"))
+LOCAL_VERIFY_BATCH_SIZE = 8
+LOCAL_VERIFY_BUDGET_SECONDS = 45
+PROCESS_RUN_ID = secrets.token_hex(16)
 
 
 def atomic_json(path: Path, data: dict[str, Any]) -> None:
@@ -78,11 +83,16 @@ def wait_for_controller(port: int, timeout: float = 30) -> None:
     raise RuntimeError(f"Mihomo controller 127.0.0.1:{port} did not become ready")
 
 
-def probe_node(port: int, node: dict[str, Any]) -> tuple[str, int | None, str | None]:
+def probe_node(
+    port: int,
+    node: dict[str, Any],
+    probe_timeout_ms: int = 5000,
+    request_timeout: float = 7,
+) -> tuple[str, int | None, str | None]:
     encoded_name = urllib.parse.quote(node["name"], safe="")
-    query = urllib.parse.urlencode({"url": TEST_URL, "timeout": 5000})
+    query = urllib.parse.urlencode({"url": TEST_URL, "timeout": probe_timeout_ms})
     try:
-        result = api_request(port, f"/proxies/{encoded_name}/delay?{query}", timeout=7)
+        result = api_request(port, f"/proxies/{encoded_name}/delay?{query}", timeout=request_timeout)
         delay = int(result.get("delay", 0))
         if delay <= 0 or delay > MAX_DELAY_MS:
             return node["name"], None, f"delay out of range: {delay}"
@@ -137,34 +147,34 @@ def assign_nodes(
     nodes: list[dict[str, Any]],
     health: dict[str, Any],
     previous_assignments: dict[str, Any],
+    verify_candidates: Callable[[str, list[dict[str, Any]]], set[str]] | None = None,
 ) -> tuple[dict[str, dict[str, str]], str]:
     node_by_name = {node["name"]: node for node in nodes}
-    healthy = [node for node in nodes if health.get(node["name"], {}).get("healthy")]
+    known_sources = PRIMARY_SOURCES | FALLBACK_SOURCES
+    healthy = [
+        node
+        for node in nodes
+        if health.get(node["name"], {}).get("healthy") and str(node.get("source", "")) in known_sources
+    ]
     if not healthy:
         raise RuntimeError("no healthy LLM proxy nodes")
 
     assignments = {slot: {} for slot in slots}
     used_nodes: set[str] = set()
     domains_by_slot = {slot: set() for slot in slots}
-    degraded = "normal"
+    duplicate_node = False
+    shared_fault_domain = False
+    primary_pool_unavailable = False
 
     for selector in SELECTORS:
         domains_this_rank: set[str] = set()
         for slot in slots:
             old_name = previous_assignments.get(slot, {}).get(selector)
-            unused_healthy_us = any(
-                node.get("region") == "US" and node["name"] not in used_nodes
-                for node in healthy
-            )
             choices = []
             for node in healthy:
                 name = node["name"]
                 delay = float(health[name]["delay_ms"])
                 score = delay
-                if unused_healthy_us and node.get("region") != "US":
-                    score += 100_000
-                if int(node.get("priority", 1)) > 0:
-                    score += MAIN_SOURCE_PENALTY_MS
                 if name == old_name:
                     score *= STICKY_FACTOR
                 if node["fault_domain"] in domains_this_rank:
@@ -173,13 +183,42 @@ def assign_nodes(
                     score += 3_000
                 if name in used_nodes:
                     score += 50_000
-                choices.append((score, delay, name, node))
-            _, _, name, node = min(choices)
+                source = str(node.get("source", ""))
+                preferred_sources = PRIMARY_SOURCES if selector == "LLM-PRIMARY" else FALLBACK_SOURCES
+                alternate_sources = FALLBACK_SOURCES if selector == "LLM-PRIMARY" else PRIMARY_SOURCES
+                if source in preferred_sources:
+                    pool_rank = 0
+                elif source in alternate_sources:
+                    pool_rank = 1
+                else:
+                    pool_rank = 2
+                choices.append((pool_rank, score, delay, name, node))
+
+            selected = None
+            ordered = sorted(choices)
+            for pool_rank in (0, 1):
+                pool_choices = [choice for choice in ordered if choice[0] == pool_rank]
+                for offset in range(0, len(pool_choices), LOCAL_VERIFY_BATCH_SIZE):
+                    batch = pool_choices[offset : offset + LOCAL_VERIFY_BATCH_SIZE]
+                    if verify_candidates is None:
+                        selected = batch[0] if batch else None
+                    else:
+                        verified = verify_candidates(slot, [choice[-1] for choice in batch])
+                        selected = next((choice for choice in batch if choice[-1]["name"] in verified), None)
+                    if selected is not None:
+                        break
+                if selected is not None:
+                    break
+            if selected is None:
+                raise RuntimeError(f"no healthy node passed verification for {slot} {selector}")
+            pool_rank, _, _, name, node = selected
             assignments[slot][selector] = name
             if name in used_nodes:
-                degraded = "duplicate-node"
-            elif node["fault_domain"] in domains_this_rank and degraded == "normal":
-                degraded = "shared-fault-domain"
+                duplicate_node = True
+            if node["fault_domain"] in domains_this_rank:
+                shared_fault_domain = True
+            if selector == "LLM-PRIMARY" and pool_rank > 0:
+                primary_pool_unavailable = True
             used_nodes.add(name)
             domains_this_rank.add(node["fault_domain"])
             domains_by_slot[slot].add(node["fault_domain"])
@@ -189,6 +228,14 @@ def assign_nodes(
         for name in slot_values.values():
             if name not in node_by_name:
                 raise RuntimeError(f"unknown assigned node: {name}")
+    if primary_pool_unavailable:
+        degraded = "primary-pool-unavailable"
+    elif duplicate_node:
+        degraded = "duplicate-node"
+    elif shared_fault_domain:
+        degraded = "shared-fault-domain"
+    else:
+        degraded = "normal"
     return assignments, degraded
 
 
@@ -206,13 +253,52 @@ def run_once(config: dict[str, Any], previous: dict[str, Any], state_path: Path 
     for slot in slots:
         wait_for_controller(int(config["slots"][slot]["controller_port"]))
     health = update_health(config["nodes"], first_controller, previous)
-    assignments, degraded = assign_nodes(slots, config["nodes"], health, previous.get("assignments", {}))
+    verification_cache: dict[tuple[str, str], int | None] = {}
+    verification_deadline = time.monotonic() + LOCAL_VERIFY_BUDGET_SECONDS
+
+    def verify_candidates(slot: str, candidates: list[dict[str, Any]]) -> set[str]:
+        missing = [node for node in candidates if (slot, node["name"]) not in verification_cache]
+        remaining = verification_deadline - time.monotonic()
+        if missing and remaining > 0:
+            port = int(config["slots"][slot]["controller_port"])
+            request_timeout = max(0.1, remaining)
+            probe_timeout_ms = max(50, min(5000, int(max(0.05, remaining - 0.1) * 1000)))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(LOCAL_VERIFY_BATCH_SIZE, len(missing))) as executor:
+                futures = [
+                    executor.submit(probe_node, port, node, probe_timeout_ms, request_timeout)
+                    for node in missing
+                ]
+                for future in concurrent.futures.as_completed(futures):
+                    name, delay, _ = future.result()
+                    verification_cache[(slot, name)] = delay
+        return {
+            node["name"]
+            for node in candidates
+            if verification_cache.get((slot, node["name"])) is not None
+        }
+
+    assignments, degraded = assign_nodes(
+        slots,
+        config["nodes"],
+        health,
+        previous.get("assignments", {}),
+        verify_candidates,
+    )
     apply_assignments(config["slots"], assignments)
+    assignment_probe_ms = {
+        slot: {
+            selector: verification_cache.get((slot, node_name))
+            for selector, node_name in slot_assignments.items()
+        }
+        for slot, slot_assignments in assignments.items()
+    }
     state = {
+        "run_id": PROCESS_RUN_ID,
         "updated_at": int(time.time()),
         "test_url": TEST_URL,
         "degraded": degraded,
         "assignments": assignments,
+        "assignment_probe_ms": assignment_probe_ms,
         "health": health,
     }
     atomic_json(state_path, state)
@@ -232,9 +318,12 @@ def print_status(config: dict[str, Any], state: dict[str, Any]) -> None:
         for selector in SELECTORS:
             name = values.get(selector, "unassigned")
             node = nodes.get(name, {})
-            delay = state.get("health", {}).get(name, {}).get("delay_ms")
+            delay = state.get("assignment_probe_ms", {}).get(slot, {}).get(selector)
+            if delay is None and "assignment_probe_ms" not in state:
+                delay = state.get("health", {}).get(name, {}).get("last_probe_ms")
+            displayed_delay = f"{delay}ms" if delay is not None else "unavailable"
             print(
-                f"  {selector:<16} {name} delay={delay}ms "
+                f"  {selector:<16} {name} delay={displayed_delay} "
                 f"source={node.get('source', '?')} region={node.get('region', '?')} "
                 f"ingress={node.get('resolved_ip', node.get('fault_domain', '?'))}"
             )
