@@ -258,9 +258,19 @@ export const GROK_BASE_URL_PRESETS: GrokBaseUrlPreset[] = [
 
 export type CnAccountMode = 'payg' | 'coding'
 
-/** 支持原生 Responses 的供应商会在 adaptive 下按入站协议选择原生端点。 */
+/** 支持原生 Responses 的供应商（deepseek / kimi / minimax / mimo）会在 adaptive 下按入站协议选择原生端点。 */
 export type CnApiProtocol = 'adaptive' | 'chat_completions' | 'anthropic' | 'responses'
 export type CnNativeApiProtocol = Exclude<CnApiProtocol, 'adaptive'>
+
+/** DeepSeek / Kimi / MiniMax / MiMo 提供原生 Responses 端点。 */
+export function cnSupportsNativeResponses(platform: string): boolean {
+  return (
+    platform === 'deepseek' ||
+    platform === 'kimi' ||
+    platform === 'minimax' ||
+    platform === 'mimo'
+  )
+}
 
 export interface CnBaseUrlPreset {
   mode: CnAccountMode
@@ -314,8 +324,10 @@ export const CN_BASE_URL_PRESETS: Record<CnProviderPlatform, CnBaseUrlPreset[]> 
   kimi: [
     { mode: 'payg', protocol: 'chat_completions', label: 'Moonshot', url: 'https://api.moonshot.cn/v1' },
     { mode: 'payg', protocol: 'anthropic', label: 'Moonshot Anthropic', url: 'https://api.moonshot.cn/anthropic' },
+    { mode: 'payg', protocol: 'responses', label: 'Moonshot Responses', url: 'https://api.moonshot.cn/v1' },
     { mode: 'coding', protocol: 'chat_completions', label: 'Kimi For Coding', url: 'https://api.kimi.com/coding/v1' },
-    { mode: 'coding', protocol: 'anthropic', label: 'Kimi Coding Anthropic', url: 'https://api.kimi.com/coding' }
+    { mode: 'coding', protocol: 'anthropic', label: 'Kimi Coding Anthropic', url: 'https://api.kimi.com/coding' },
+    { mode: 'coding', protocol: 'responses', label: 'Kimi Coding Responses', url: 'https://api.kimi.com/coding/v1' }
   ],
   zhipu: [
     { mode: 'payg', protocol: 'chat_completions', label: 'GLM PaaS', url: 'https://open.bigmodel.cn/api/paas/v4' },
@@ -428,12 +440,12 @@ export function defaultCNAdaptiveBaseUrls(
   return {
     chat_completions: defaultCNBaseUrl(platform, mode, 'chat_completions'),
     anthropic: defaultCNBaseUrl(platform, mode, 'anthropic'),
-    responses: cnProviderSupportsResponses(platform, mode) ? defaultCNBaseUrl(platform, mode, 'responses') : ''
+    responses: cnSupportsNativeResponses(platform) ? defaultCNBaseUrl(platform, mode, 'responses') : ''
   }
 }
 
 export function cnProviderSupportsResponses(platform: string, _mode?: CnAccountMode): boolean {
-  return platform === 'deepseek' || platform === 'minimax' || platform === 'mimo'
+  return cnSupportsNativeResponses(platform)
 }
 
 // ===== 国产供应商用量单元格可见性（单一事实源） =====
