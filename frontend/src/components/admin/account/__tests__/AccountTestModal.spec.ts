@@ -24,7 +24,8 @@ vi.mock('@/composables/useClipboard', () => ({
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   const messages: Record<string, string> = {
-    'admin.accounts.imagePromptDefault': 'Generate a cute orange cat astronaut sticker on a clean pastel background.'
+    'admin.accounts.imagePromptDefault': 'Generate a cute orange cat astronaut sticker on a clean pastel background.',
+    'admin.accounts.textPromptDefault': '你的知识库截止日期是什么时候？'
   }
   return {
     ...actual,
@@ -182,7 +183,7 @@ describe('AccountTestModal', () => {
     const [, request] = (global.fetch as any).mock.calls[0]
     expect(JSON.parse(request.body)).toEqual({
       model_id: 'grok-4.3',
-      prompt: '',
+      prompt: '你的知识库截止日期是什么时候？',
       mode: 'text'
     })
   })
@@ -218,6 +219,35 @@ describe('AccountTestModal', () => {
       model_id: 'gpt-5.4',
       prompt: '',
       mode: 'compact'
+    })
+  })
+
+  it('文本模型默认使用可编辑的知识截止日期问题', async () => {
+    getAvailableModels.mockResolvedValue([
+      { id: 'gpt-5.4', display_name: 'GPT-5.4' }
+    ])
+    const wrapper = mountModal({
+      id: 42,
+      name: 'OpenAI OAuth',
+      platform: 'openai',
+      type: 'oauth',
+      status: 'active'
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    const promptInput = wrapper.get('textarea.textarea-stub')
+    expect(promptInput.element.value).toBe('你的知识库截止日期是什么时候？')
+    await promptInput.setValue('请只回答你的训练数据截止年月。')
+
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+
+    const [, request] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(request.body)).toMatchObject({
+      model_id: 'gpt-5.4',
+      prompt: '请只回答你的训练数据截止年月。',
+      mode: 'default'
     })
   })
 })

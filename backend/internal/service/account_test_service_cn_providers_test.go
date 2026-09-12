@@ -36,7 +36,8 @@ func TestAccountTestService_ZhipuChatCompletionsHitsChatCompletionsEndpoint(t *t
 		},
 	}
 
-	err := svc.testCNProviderAccountConnection(ctx, account, "glm-5.2", "")
+	const prompt = "custom knowledge cutoff question"
+	err := svc.testCNProviderAccountConnection(ctx, account, "glm-5.2", prompt)
 	require.NoError(t, err)
 	require.Len(t, upstream.requests, 1)
 
@@ -47,7 +48,7 @@ func TestAccountTestService_ZhipuChatCompletionsHitsChatCompletionsEndpoint(t *t
 	body, err := io.ReadAll(req.Body)
 	require.NoError(t, err)
 	require.Equal(t, "glm-5.2", gjson.GetBytes(body, "model").String())
-	require.Equal(t, "hi", gjson.GetBytes(body, "messages.0.content").String())
+	require.Equal(t, prompt, gjson.GetBytes(body, "messages.0.content").String())
 	require.Contains(t, recorder.Body.String(), "test_complete")
 }
 
@@ -71,7 +72,8 @@ func TestAccountTestService_ZhipuAnthropicProtocolHitsNativeAnthropicEndpoint(t 
 		},
 	}
 
-	err := svc.testCNProviderAccountConnection(ctx, account, "glm-5.2", "")
+	const prompt = "custom knowledge cutoff question"
+	err := svc.testCNProviderAccountConnection(ctx, account, "glm-5.2", prompt)
 	require.NoError(t, err)
 	require.Len(t, upstream.requests, 1)
 
@@ -86,7 +88,7 @@ func TestAccountTestService_ZhipuAnthropicProtocolHitsNativeAnthropicEndpoint(t 
 	body, err := io.ReadAll(req.Body)
 	require.NoError(t, err)
 	require.Equal(t, "glm-5.2", gjson.GetBytes(body, "model").String())
-	require.Equal(t, "hi", gjson.GetBytes(body, "messages.0.content.0.text").String())
+	require.Equal(t, prompt, gjson.GetBytes(body, "messages.0.content.0.text").String())
 	require.Contains(t, recorder.Body.String(), "test_complete")
 }
 

@@ -338,7 +338,8 @@ func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t 
 	require.True(t, gpt56.SupportsParallelToolCalls)
 	require.True(t, gpt56.SupportVerbosity)
 	require.Equal(t, []string{"text"}, gpt56.InputModalities)
-	require.Equal(t, int64(872_000), gpt56.MaxContextWindow)
+	require.Equal(t, int64(1_000_000), gpt56.ContextWindow)
+	require.Equal(t, int64(1_050_000), gpt56.MaxContextWindow)
 	require.Equal(t, configuredCodexTruncationPolicy{Mode: "tokens", Limit: 10_000}, gpt56.TruncationPolicy)
 	require.NotNil(t, gpt56.DefaultVerbosity)
 	require.Equal(t, "low", *gpt56.DefaultVerbosity)
@@ -366,14 +367,16 @@ func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t 
 	require.True(t, isOpenAICodexReasoningGPTModel("openai/gpt-6-astra"))
 	require.True(t, isOpenAIGPT6AstraModel("gpt-6-astra-2026-09-01"))
 	require.False(t, isOpenAIGPT6AstraModel("gpt-6-other"))
-	require.Equal(t, int64(1_050_000), gpt6Astra.ContextWindow)
+	require.Equal(t, int64(1_000_000), gpt6Astra.ContextWindow)
 	require.Equal(t, int64(1_050_000), gpt6Astra.MaxContextWindow)
 	gpt6 := newConfiguredCodexModelDescriptor("gpt-6")
 	require.Equal(t, "GPT-6 (Astra)", gpt6.DisplayName)
 	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, effortsFromConfiguredCodexLevels(gpt6.SupportedReasoningLevels))
-	require.Equal(t, int64(1_050_000), gpt6.ContextWindow)
+	require.Equal(t, int64(1_000_000), gpt6.ContextWindow)
 
 	gpt55 := newConfiguredCodexModelDescriptor("gpt-5.5")
+	require.Equal(t, int64(1_000_000), gpt55.ContextWindow)
+	require.Equal(t, int64(1_050_000), gpt55.MaxContextWindow)
 	require.Equal(t, "GPT-5.5", gpt55.DisplayName)
 	require.NotNil(t, gpt55.DefaultReasoningLevel)
 	require.Equal(t, "medium", *gpt55.DefaultReasoningLevel)
@@ -1634,6 +1637,7 @@ func TestFetchCodexModelsManifestPassthrough(t *testing.T) {
 	if got := firstModel["slug"]; got != "gpt-5.5" {
 		t.Errorf("model slug: got %v", got)
 	}
+	require.EqualValues(t, 1_000_000, firstModel["context_window"])
 	if got := firstModel["max_context_window"]; got != float64(openAILongContextWindow) {
 		t.Errorf("max context window: got %v", got)
 	}
@@ -2005,6 +2009,8 @@ func TestFetchCodexModelsManifestAPIKeyConvertsStandardOpenAIModelList(t *testin
 	require.Len(t, models, 2)
 	requireCompleteConfiguredCodexModel(t, models[0], "gpt-5.6")
 	requireCompleteConfiguredCodexModel(t, models[1], "gpt-5.6-codex")
+	require.EqualValues(t, 1_000_000, models[0]["context_window"])
+	require.EqualValues(t, 1_050_000, models[0]["max_context_window"])
 	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
 	require.Equal(t, []any{"text", "image"}, models[1]["input_modalities"])
 	require.Equal(t, codexModelsManifestBodyETag(manifest.Body), manifest.ETag)
@@ -2299,7 +2305,7 @@ func TestFetchCodexModelsManifestAPIKeyDisablesResponsesLiteForAffectedModels(t 
 	s := newCodexModelsAPIKeyTestService(upstream)
 	manifest, err := s.FetchCodexModelsManifest(context.Background(), newCodexModelsAPIKeyTestAccount("https://upstream.example"), "0.145.0", "")
 	require.NoError(t, err)
-	require.JSONEq(t, `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":false,"max_context_window":1050000},{"slug":"gpt-5.6-codex","use_responses_lite":true}],"metadata":{"version":1}}`, string(manifest.Body))
+	require.JSONEq(t, `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":false,"context_window":1000000,"max_context_window":1050000},{"slug":"gpt-5.6-codex","use_responses_lite":true}],"metadata":{"version":1}}`, string(manifest.Body))
 	require.Equal(t, codexModelsManifestBodyETag(manifest.Body), manifest.ETag)
 	require.Equal(t, `"upstream-strong"`, manifest.upstreamETag)
 
@@ -2322,7 +2328,7 @@ func TestFetchCodexModelsManifestOAuthPreservesResponsesLite(t *testing.T) {
 	s := &OpenAIGatewayService{}
 	manifest, err := s.FetchCodexModelsManifest(context.Background(), newCodexModelsTestAccount(), "0.145.0", "")
 	require.NoError(t, err)
-	require.JSONEq(t, `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":true,"max_context_window":1050000}]}`, string(manifest.Body))
+	require.JSONEq(t, `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":true,"context_window":1000000,"max_context_window":1050000}]}`, string(manifest.Body))
 }
 
 func TestConvertOpenAIModelListToCompleteCodexManifest(t *testing.T) {
@@ -2436,6 +2442,7 @@ func TestFetchCodexModelsManifestAcceptsConfiguredLimitAboveLegacyBoundary(t *te
 	firstModel, ok := models[0].(map[string]any)
 	require.True(t, ok, "first model entry is not an object")
 	require.Equal(t, "gpt-5.6", firstModel["slug"])
+	require.EqualValues(t, 1_000_000, firstModel["context_window"])
 	require.Equal(t, float64(openAILongContextWindow), firstModel["max_context_window"])
 	require.Greater(t, len(manifest.Body), 8<<20)
 }
@@ -2507,7 +2514,7 @@ func TestFetchCodexModelsManifestAPIKeyDoesNotCacheInvalidEnvelope(t *testing.T)
 	if err != nil {
 		t.Fatalf("second fetch returned error: %v", err)
 	}
-	require.JSONEq(t, `{"models":[{"slug":"gpt-5.6","max_context_window":1050000}]}`, string(manifest.Body))
+	require.JSONEq(t, `{"models":[{"slug":"gpt-5.6","context_window":1000000,"max_context_window":1050000}]}`, string(manifest.Body))
 	if got := calls.Load(); got != 2 {
 		t.Errorf("upstream calls: got %d, want 2", got)
 	}
@@ -2591,7 +2598,7 @@ func TestFetchCodexModelsManifestAPIKeySharedRefreshSurvivesCallerCancellation(t
 		if result.err != nil {
 			t.Fatalf("second caller returned error: %v", result.err)
 		}
-		require.JSONEq(t, `{"models":[{"slug":"gpt-5.6","max_context_window":1050000}]}`, string(result.manifest.Body))
+		require.JSONEq(t, `{"models":[{"slug":"gpt-5.6","context_window":1000000,"max_context_window":1050000}]}`, string(result.manifest.Body))
 	case <-time.After(time.Second):
 		t.Fatal("second caller did not receive shared refresh result")
 	}
@@ -2988,7 +2995,7 @@ func TestFetchCodexModelsManifestAPIKeyRevalidatesStaleETag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stale fetch returned error: %v", err)
 	}
-	require.JSONEq(t, `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":false,"max_context_window":1050000}]}`, string(manifest.Body))
+	require.JSONEq(t, `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":false,"context_window":1000000,"max_context_window":1050000}]}`, string(manifest.Body))
 	select {
 	case <-refreshDone:
 	case <-time.After(time.Second):
@@ -3015,7 +3022,7 @@ func TestFetchCodexModelsManifestAPIKeyRevalidatesStaleETag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("renewed cached manifest: body=%q err=%v", manifest.Body, err)
 	}
-	require.JSONEq(t, `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":false,"max_context_window":1050000}]}`, string(manifest.Body))
+	require.JSONEq(t, `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":false,"context_window":1000000,"max_context_window":1050000}]}`, string(manifest.Body))
 	if got := calls.Load(); got != 2 {
 		t.Errorf("upstream calls: got %d, want 2", got)
 	}
@@ -3386,8 +3393,8 @@ func TestFetchCodexModelsManifestOAuthFreshWindowZeroUpstreamRequests(t *testing
 		manifest, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
 		require.NoError(t, err)
 		require.False(t, manifest.NotModified)
-		// VSP 本地为 gpt-5.5 注入 max_context_window，缓存 body 是注入后的形态。
-		require.JSONEq(t, `{"models":[{"max_context_window":1050000,"slug":"gpt-5.5"}]}`, string(manifest.Body))
+		// VSP 本地为 gpt-5.5 注入上下文窗口，缓存 body 是注入后的形态。
+		require.JSONEq(t, `{"models":[{"context_window":1000000,"max_context_window":1050000,"slug":"gpt-5.5"}]}`, string(manifest.Body))
 	}
 	require.EqualValues(t, 1, calls.Load(), "新鲜期内重复请求不得打到 chatgpt.com")
 }

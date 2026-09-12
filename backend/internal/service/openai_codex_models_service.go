@@ -318,8 +318,6 @@ const (
 	configuredCodexDeepSeekV4Context   = 1_000_000
 	configuredCodexGrokContext         = 500_000
 	configuredCodexGrokBuildContext    = 256_000
-	configuredCodexGPT56MaxContext     = 872_000
-	configuredCodexGPT6AstraContext    = 1_050_000
 	configuredCodexToolOutputMaxTokens = 10_000
 )
 
@@ -488,13 +486,6 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 			descriptor.SupportedReasoningLevels = configuredCodexGPTReasoningLevels(modelID)
 			descriptor.DefaultReasoningSummary = "none"
 			descriptor.TruncationPolicy = configuredCodexTruncationPolicy{Mode: "tokens", Limit: configuredCodexToolOutputMaxTokens}
-			if isOpenAIGPT56Model(modelID) {
-				descriptor.MaxContextWindow = configuredCodexGPT56MaxContext
-			}
-			if isOpenAIGPT6AstraModel(modelID) {
-				descriptor.ContextWindow = configuredCodexGPT6AstraContext
-				descriptor.MaxContextWindow = configuredCodexGPT6AstraContext
-			}
 		}
 		if SupportsVerbosity(modelID) {
 			defaultVerbosity := "low"
@@ -503,6 +494,7 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		}
 	}
 
+	applyCodexDefaultContextWindow(&descriptor, modelID)
 	return descriptor
 }
 
@@ -895,6 +887,7 @@ func buildCodexModelsManifest(
 		if metadata, ok := modelMetadata[modelID]; ok {
 			applyUpstreamModelMetadataToCodexDescriptor(&descriptor, metadata)
 		}
+		applyCodexDefaultContextWindow(&descriptor, metadataModelID)
 		if metadataModelID != modelID {
 			descriptor.DisplayName = modelID
 			descriptor.Description = configuredCodexCustomDescription
@@ -1923,7 +1916,7 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 			}
 		}
 	}
-	body, err = adjustCodexModelsManifestMaxContextWindow(body)
+	body, err = adjustCodexModelsManifestContextWindow(body)
 	if err != nil {
 		return nil, &codexModelsManifestUpstreamError{
 			err: infraerrors.Newf(
@@ -1968,7 +1961,10 @@ var apiKeyCodexModelsWithoutResponsesLite = map[string]struct{}{
 	"gpt-5.6-luna":  {},
 }
 
-const openAILongContextWindow = 1_050_000
+const (
+	openAIDefaultContextWindow = 1_000_000
+	openAILongContextWindow    = 1_050_000
+)
 
 var openAILongContextCodexModels = map[string]struct{}{
 	"gpt-5.5":       {},
@@ -1978,11 +1974,22 @@ var openAILongContextCodexModels = map[string]struct{}{
 	"gpt-5.6-luna":  {},
 }
 
-// adjustCodexModelsManifestMaxContextWindow raises only the opt-in ceiling.
-// The upstream context_window remains the conservative default; Codex clients
-// can select a larger window through model_context_window without being clamped
-// back to the legacy 272k catalog ceiling.
-func adjustCodexModelsManifestMaxContextWindow(body []byte) ([]byte, error) {
+func usesOpenAILongContextWindow(modelID string) bool {
+	_, targeted := openAILongContextCodexModels[canonicalizeOpenAIModelAliasSpelling(modelID)]
+	return targeted || isOpenAIGPT56Model(modelID) || isOpenAIGPT6AstraModel(modelID)
+}
+
+func applyCodexDefaultContextWindow(descriptor *configuredCodexModelDescriptor, modelID string) {
+	if usesOpenAILongContextWindow(modelID) {
+		descriptor.ContextWindow = openAIDefaultContextWindow
+		if descriptor.MaxContextWindow < openAILongContextWindow {
+			descriptor.MaxContextWindow = openAILongContextWindow
+		}
+	}
+}
+
+// Long-context GPT catalogs default to 1M while retaining the larger opt-in ceiling.
+func adjustCodexModelsManifestContextWindow(body []byte) ([]byte, error) {
 	var envelope map[string]json.RawMessage
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return nil, fmt.Errorf("decode JSON object: %w", err)
@@ -2002,16 +2009,23 @@ func adjustCodexModelsManifestMaxContextWindow(body []byte) ([]byte, error) {
 		if err := json.Unmarshal(model["slug"], &slug); err != nil {
 			continue
 		}
-		if _, targeted := openAILongContextCodexModels[slug]; !targeted {
+		if !usesOpenAILongContextWindow(slug) {
 			continue
 		}
-		var currentMax int
-		if rawMax, ok := model["max_context_window"]; ok {
-			if err := json.Unmarshal(rawMax, &currentMax); err == nil && currentMax >= openAILongContextWindow {
-				continue
-			}
+		modelChanged := false
+		var currentDefault int64
+		if json.Unmarshal(model["context_window"], &currentDefault) != nil || currentDefault != openAIDefaultContextWindow {
+			model["context_window"] = json.RawMessage("1000000")
+			modelChanged = true
 		}
-		model["max_context_window"] = json.RawMessage("1050000")
+		var currentMax int
+		if json.Unmarshal(model["max_context_window"], &currentMax) != nil || currentMax < openAILongContextWindow {
+			model["max_context_window"] = json.RawMessage("1050000")
+			modelChanged = true
+		}
+		if !modelChanged {
+			continue
+		}
 		adjusted, err := json.Marshal(model)
 		if err != nil {
 			return nil, fmt.Errorf("encode model %q: %w", slug, err)
@@ -2200,6 +2214,10 @@ func (s *OpenAIGatewayService) CompleteAPIKeyCodexModelsManifestForClient(manife
 		return err
 	}
 	body, err = adjustAPIKeyCodexModelsManifest(body, account)
+	if err != nil {
+		return err
+	}
+	body, err = adjustCodexModelsManifestContextWindow(body)
 	if err != nil {
 		return err
 	}

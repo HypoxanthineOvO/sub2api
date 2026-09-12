@@ -129,7 +129,8 @@ func TestAccountTestService_TestAccountConnection_GrokUsesXAIResponses(t *testin
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/13/test", nil)
 
-	err := svc.TestAccountConnection(c, account.ID, "grok", "", AccountTestModeDefault)
+	const prompt = "custom knowledge cutoff question"
+	err := svc.TestAccountConnection(c, account.ID, "grok", prompt, AccountTestModeDefault)
 	require.NoError(t, err)
 
 	require.Equal(t, "https://cli-chat-proxy.grok.com/v1/responses", upstream.lastReq.URL.String())
@@ -137,7 +138,7 @@ func TestAccountTestService_TestAccountConnection_GrokUsesXAIResponses(t *testin
 	require.Equal(t, grokCLIVersion, upstream.lastReq.Header.Get("X-Grok-Client-Version"))
 	require.Equal(t, "application/json, text/event-stream", upstream.lastReq.Header.Get("Accept"))
 	require.Equal(t, "grok-4.3", gjson.GetBytes(upstream.lastBody, "model").String())
-	require.Equal(t, grokQuotaProbeInput, gjson.GetBytes(upstream.lastBody, "input").String())
+	require.Equal(t, prompt, gjson.GetBytes(upstream.lastBody, "input").String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "max_output_tokens").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "store").Exists())
