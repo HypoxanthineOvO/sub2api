@@ -169,6 +169,7 @@ func runMainServer() {
 	}
 
 	// 启动服务器
+	app.Server.Handler = withDeploymentIdentity(app.Server.Handler)
 	go func() {
 		if err := app.Server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("Failed to start server: %v", err)

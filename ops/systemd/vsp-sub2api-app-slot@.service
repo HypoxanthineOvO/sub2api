@@ -1,5 +1,5 @@
 [Unit]
-Description=VSP Sub2API application slot (%i)
+Description=VSP Sub2API managed application slot (%i)
 After=network-online.target
 Wants=network-online.target
 
@@ -9,8 +9,8 @@ User=heyx
 Group=vsp-admin
 WorkingDirectory=/var/lib/vsp-sub2api/production/app
 EnvironmentFile=/etc/vsp-sub2api/production/app.env
-EnvironmentFile=/etc/vsp-sub2api/production/app-%i.env
-ExecStart=/opt/vsp-sub2api/app-slots/%i/sub2api
+EnvironmentFile=/etc/vsp-sub2api-release/%i.env
+ExecStart=/opt/vsp-sub2api-managed/slots/%i/sub2api
 Restart=always
 RestartSec=5
 TimeoutStopSec=90

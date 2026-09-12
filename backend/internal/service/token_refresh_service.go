@@ -485,6 +485,12 @@ func (s *TokenRefreshService) processRefresh() {
 
 // processRefreshContext executes one bounded, cursor-resumable refresh cycle.
 func (s *TokenRefreshService) processRefreshContext(parent context.Context) {
+	leaseEnd, leaseOwned := beginDeploymentJob()
+	if !leaseOwned {
+		return
+	}
+	defer leaseEnd()
+
 	if parent == nil {
 		parent = context.Background()
 	}

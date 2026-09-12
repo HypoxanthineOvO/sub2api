@@ -258,6 +258,12 @@ func (s *OpsCleanupService) refreshEffectiveBeforeRun(ctx context.Context) {
 }
 
 func (s *OpsCleanupService) runScheduled() {
+	leaseEnd, leaseOwned := beginDeploymentJob()
+	if !leaseOwned {
+		return
+	}
+	defer leaseEnd()
+
 	if s == nil || s.db == nil || s.opsRepo == nil {
 		return
 	}

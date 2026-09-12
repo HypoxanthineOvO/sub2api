@@ -151,7 +151,7 @@ func (s *BatchImageCleanupService) Start() {
 		ticker := time.NewTicker(s.cleanupInterval())
 		defer ticker.Stop()
 		for {
-			_, _ = s.RunOnce(ctx, time.Now())
+			s.runScheduledCleanup(ctx)
 			select {
 			case <-ctx.Done():
 				return
@@ -159,6 +159,15 @@ func (s *BatchImageCleanupService) Start() {
 			}
 		}
 	}()
+}
+
+func (s *BatchImageCleanupService) runScheduledCleanup(ctx context.Context) {
+	leaseEnd, leaseOwned := beginDeploymentJob()
+	if !leaseOwned {
+		return
+	}
+	defer leaseEnd()
+	_, _ = s.RunOnce(ctx, time.Now())
 }
 
 func (s *BatchImageCleanupService) Stop() {

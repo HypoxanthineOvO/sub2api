@@ -250,6 +250,12 @@ func (s *BackupService) Start() {
 
 // recoverStaleRecords 启动时将孤立的 running 记录标记为 failed，并清理已上传对象。
 func (s *BackupService) recoverStaleRecords() {
+	leaseEnd, leaseOwned := beginDeploymentJob()
+	if !leaseOwned {
+		return
+	}
+	defer leaseEnd()
+
 	loadCtx, loadCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer loadCancel()
 
@@ -497,6 +503,12 @@ func (s *BackupService) removeCronSchedule() {
 }
 
 func (s *BackupService) runScheduledBackup() {
+	leaseEnd, leaseOwned := beginDeploymentJob()
+	if !leaseOwned {
+		return
+	}
+	defer leaseEnd()
+
 	s.wg.Add(1)
 	defer s.wg.Done()
 

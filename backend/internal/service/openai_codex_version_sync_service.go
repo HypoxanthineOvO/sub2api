@@ -119,6 +119,12 @@ func (s *OpenAICodexVersionSyncService) syncedWithinInterval() bool {
 }
 
 func (s *OpenAICodexVersionSyncService) runOnce() {
+	leaseEnd, leaseOwned := beginDeploymentJob()
+	if !leaseOwned {
+		return
+	}
+	defer leaseEnd()
+
 	ctx, cancel := context.WithTimeout(context.Background(), openAICodexVersionSyncTimeout)
 	defer cancel()
 

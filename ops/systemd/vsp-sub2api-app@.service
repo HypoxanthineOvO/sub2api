@@ -1,7 +1,7 @@
 [Unit]
 Description=VSP Sub2API application (%i)
-Requires=vsp-postgresql@%i.service vsp-redis@%i.service vsp-proxy-allocator@%i.service vsp-selected-node@%i.service
-After=network-online.target vsp-postgresql@%i.service vsp-redis@%i.service vsp-proxy-allocator@%i.service vsp-selected-node@%i.service
+Requires=vsp-postgresql@%i.service vsp-redis@%i.service
+After=network-online.target vsp-postgresql@%i.service vsp-redis@%i.service
 Wants=network-online.target
 PartOf=vsp-sub2api-%i.target
 

@@ -2,12 +2,7 @@
 Description=VSP Sub2API isolated rehearsal stack
 Requires=vsp-postgresql@rehearsal.service
 Requires=vsp-redis@rehearsal.service
-Requires=vsp-mihomo-rehearsal@slot-a.service vsp-mihomo-rehearsal@slot-b.service vsp-mihomo-rehearsal@slot-c.service vsp-mihomo-rehearsal@slot-d.service vsp-mihomo-rehearsal@slot-e.service
-Requires=vsp-selected-node@rehearsal.service
 Requires=vsp-sub2api-app@rehearsal.service
-# See vsp-sub2api-production.target: the allocator is deploy-restarted, so it
-# must not use stop-propagating dependencies from this target.
-Wants=vsp-proxy-allocator@rehearsal.service
 After=network-online.target
 
 [Install]

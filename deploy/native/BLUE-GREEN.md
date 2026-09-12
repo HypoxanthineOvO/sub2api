@@ -1,144 +1,84 @@
-# Native App Blue-Green Release
+# VSP Sub2API 发布流程
 
-This procedure changes only the Sub2API App process and Nginx upstream. It does
-not restart or modify PostgreSQL, Redis, proxy allocator, Selected Node, or the
-five proxy slots.
+状态（2026-09-13）：用户已批准将本地实现、清理、测试与文档归入本次维护提交，**尚未安装到 Babel，尚未执行首次切换**。生产源码基线为 `04218bfbf`；提交代码不等于批准生产安装或发布。本文取代旧的同机发布操作说明。
 
-## One-time installation
+## 已确认的边界
 
-Install the app-only unit and Nginx files, preserving blue (`19821`) as the
-initial active upstream:
+- 生产在 Babel，开发与构建在 Genesis。
+- 普通发布入口不需要调用者加 sudo 或输入密码；内部只调用固定的 root 执行器。一次性权限安装由用户批准。
+- 普通发布失败应回到已知可用版本，不主动停止健康旧实例，不强断存量请求；不承诺任意应用、主机或数据库故障下零失败请求。
+- **旧版首次接入只做一次维护窗口切换**：由用户选择低流量时间，允许短暂停服；失败恢复旧版。不为旧版实现热备用 worker 转换或复杂兼容状态机。
+- 首次新版仅加入发布支持，不混入后续 Bug、上游升级和国模/UI 微调。
 
-```bash
-sudo bash /home/heyx/Workspace/VSP/VSP-Sub2API/deploy/native/install-blue-green-nginx.sh
-```
+## 一次性安装与首次启动
 
-`sites-enabled/api.vsplab.cn` is the active production file on this host. Do not
-copy the divergent `sites-available` file over it.
+以下是待审阅的顺序，不是当前已经执行的操作：
 
-## Stage and verify a release
+1. 验收本地实现，形成确定的候选提交并推送。
+2. 从该提交构建正式应用包；控制器源码和两个 systemd unit 单独交付，不能把包内任意脚本作为 root hook。
+3. 用户批准并执行一次 `install-release-control.py --baseline <已有生产产物包>`。它校验现有进程二进制及价格资源，建立 root 管理的版本目录、受限 sudo 入口和 19820 本地健康探针；reload Nginx，但不重启当前 App、数据库或代理。
+4. 用户选择维护窗口，执行管理员专用 `release_initial.py <release-id> --maintenance-window`。
+5. 首次流程先验证候选启动，再停止旧 App、转移后台任务执行权、切到新版并验证。发生失败则停止候选，启动旧版并恢复入口；窗口内允许短暂中断。
+6. 首次成功后旧版停止、文件保留。新版本之间以后全部走普通蓝绿流程。若需要退回最初不支持任务协调的旧版，仍按维护操作处理，不假装它支持普通热回滚。
 
-Build the candidate, install it into the inactive slot with autonomous workers
-disabled, and start the slot:
+本地已有历史基线包：`dist/releases/baseline-04218bfbf222-a3cc2054ba98.tar`。它不是新版发布产物，也没有被当作新版本部署。
 
-```bash
-bash deploy/native/build.sh
-sudo env VSP_NATIVE_RELEASE=<release> VSP_NATIVE_SLOT=green \
-  VSP_NATIVE_SLOT_MODE=canary bash deploy/native/install.sh
-sudo systemctl start vsp-sub2api-app-slot@green.service
-for _ in $(seq 1 30); do
-  curl --noproxy '*' --fail http://127.0.0.1:19822/health && break
-  sleep 1
-done
-curl --noproxy '*' --fail http://127.0.0.1:19822/health
-```
+## 后续日常发布
 
-Use `switch-app-slot.sh green` to expose the candidate for application-level
-checks. The script changes one symlink, validates Nginx, reloads it, verifies the
-HTTPS health endpoint, and waits for connections to the old port to drain. It
-does not stop either App process.
-
-## Promote workers
-
-The canary starts with `SUB2API_DISABLE_AUTONOMOUS_WORKERS=1`. After its checks:
-
-This existing switch disables the uncoordinated scheduled tests, channel
-monitors, expiry sweeps, refreshers, and similar autonomous jobs. A few queue
-consumers still start, but their work claims are coordinated through the shared
-database or Redis.
-
-The current application cannot transfer worker ownership without restarting an
-App process. During final promotion, old and new workers therefore overlap only
-while old HTTP connections drain. Routine deployment bounds this overlap to 120
-seconds and returns traffic to the old slot on timeout; it never force-stops
-active requests.
-
-1. Switch traffic back to blue.
-2. Re-run `install.sh` for green with `VSP_NATIVE_SLOT_MODE=active`.
-3. Restart green while blue is serving traffic and verify green health.
-4. Switch traffic to green and wait for blue to drain.
-5. After the switch script reports that port `19821` is drained, install the
-   target definition that no longer hard-codes the legacy App, enable green,
-   disable the old App unit, and then stop the old App:
-
-   ```bash
-   sudo install -m 0644 ops/systemd/vsp-sub2api-production.target /etc/systemd/system/
-   sudo systemctl daemon-reload
-   sudo systemctl enable vsp-sub2api-app-slot@green.service
-   sudo systemctl disable vsp-sub2api-app@production.service
-   sudo systemctl stop vsp-sub2api-app@production.service
-   ```
-
-For the first release, the old service is `vsp-sub2api-app@production.service`.
-Later releases stop `vsp-sub2api-app-slot@blue.service` or
-`vsp-sub2api-app-slot@green.service`, whichever is inactive.
-
-Rollback before stopping the old App is the same switch command pointed at the
-old slot. No database or proxy rollback is involved.
-
-Only the active slot is enabled. When deploying in the other direction, enable
-the promoted slot and disable the retired slot before stopping it; this makes a
-host reboot start the same release that Nginx serves.
-
-## Routine releases
-
-After code review and repository validation, build as the regular user. The
-build records the current commit, the exact `backend/frontend` content tree,
-and the binary checksum, so reviewed uncommitted source changes can also be
-deployed without weakening artifact validation:
+安装完成后，Agent 在 Genesis 使用普通用户入口：
 
 ```bash
-bash deploy/native/build.sh
+./deploy/native/vsp-release build --commit <已提交并推送的完整commit>
+./deploy/native/vsp-release upload dist/releases/<release-id>.tar
+./deploy/native/vsp-release deploy <release-id>
+./deploy/native/vsp-release status
+./deploy/native/vsp-release rollback
 ```
 
-The build records its exact Git commit. A routine release then needs one root
-command:
+Babel 上对应入口是 `/usr/local/bin/vsp-release`。同属 heyx 且有 Babel SSH 访问的 Agent 可共用；权限按 Unix 账号授权，不只授予某个 Agent 产品。其他账号不自动获得权限。
 
-```bash
-sudo bash /home/heyx/Workspace/VSP/VSP-Sub2API/deploy/native/deploy-app-release.sh
-```
+正式构建要求工作区干净、指定提交等于 `origin/vsp/main` 的远端头；源码隔离导出，临时目录自动清理，不积累 worktree。产物为 Linux amd64 应用、价格资源和 manifest；记录源提交、tree、构建工具版本、迁移文件及文件哈希。校验值证明内容完整性，不代表恶意或错误应用已经过可信审计。
 
-The script requires a build matching both `HEAD` and the current source content.
-It detects the inactive slot, stages it with autonomous workers disabled, performs
-a short canary switch, returns traffic to promote workers, switches back to the
-new slot, drains and stops the old slot, and updates boot enablement. It never
-restarts PostgreSQL, Redis, allocator, Selected Node, or proxy slots.
+发布按以下顺序执行：
 
-## Agent deployment command
+1. 主机级排他锁、固定请求 schema、不可变产物导入与校验。
+2. 校验可回退版本、迁移清单和资源余量。
+3. 在备用槽位启动、验证应用身份，不先停主实例。
+4. 等旧定时任务完成并交接执行权，再切流。
+5. 检查实际 Nginx upstream、版本标识和公网入口；等待旧 Nginx worker 的请求结束，覆盖 HTTP/2/SSE 和慢上传。
+6. 完成记录与开机启用状态更新，旧进程保留为 worker-gated 热备用，不在成功检查之后再贸然停止它。
 
-Install the constrained root-owned deployment command once after reviewing the
-installer and privileged scripts:
+新版本间手动回滚不要求坏版本先恢复健康，也不重启已经运行的回滚目标。发布失败与主动回滚使用明确的结果语义；“queued”不是成功，调用端默认等待最终状态。SSH 断开不会取消 Babel 上的 systemd 发布任务。
 
-```bash
-sudo bash deploy/native/install-agent-deployer.sh
-```
+## 权限与失败处理
 
-After that one-time setup, an agent can build and deploy an App-only release:
+- 普通入口内部使用 `sudo -n`；sudoers 只授权 root 所有的无参数 `control` launcher。请求通过有大小限制的 JSON 传递，仅允许 deploy、rollback、status。
+- root 执行器、依赖、配置和父目录不可由普通用户替换；应用本身仍以 heyx 运行。
+- 不开放任意 unit、shell、路径、环境变量或数据服务重启权限；首次维护入口不在 Agent 免密授权中。
+- 定时任务使用单机共享文件锁和 root 管理的 owner 记录；交接先等待旧任务结束，不能双活。手动业务请求和进程自己的日志/队列处理不被当作全局定时任务停掉。该机制不宣称业务层 exactly-once。
+- systemd 的独立恢复入口会读取持久化发布记录；无法验证恢复时明确返回 recovery_failed，不掩盖错误、不自动杀掉仍承载请求的普通发布实例。
+- 新旧 SQL 迁移清单不同会拦截自动发布，必须另行审阅迁移与恢复方案。
+- 旧 Nginx worker 还持有其他站点长连接时，普通发布可能等待或拒绝完成；不会为完成发布而强停它们。
 
-```bash
-bash deploy/native/build.sh
-sudo -n /usr/local/sbin/vsp-sub2api-deploy
-```
+## 当前代码位置
 
-The same installer adds a separate allocator-only command and a production unit
-drop-in. Allocator releases are content-addressed under
-`/opt/vsp-sub2api/allocator/releases`, with an independent atomic `current`
-symlink, so App blue-green releases cannot change the allocator version. The
-command switches that symlink, restarts only the allocator unit, then verifies
-the primary/fallback pool contract, per-slot raw probe values, all three Mihomo
-selectors, and that each live route has returned to PRIMARY. The stack target
-pulls the allocator in with `Wants=` (not `Requires=`), so restarting or rolling
-back the allocator can never stop PostgreSQL, Redis, or the proxy slots; the
-deployer additionally records stack-target liveness before deploying and
-restores the target if a deployment ever takes it down. Any failed
-verification restores the previous allocator release and restarts the allocator:
+| 文件 | 职责 |
+| --- | --- |
+| `release_client.py` / `vsp-release` | 普通用户构建、上传、调用和结果等待 |
+| `release_core.py` | 包契约、普通发布及一次性维护流程 |
+| `release_host.py` | Babel 固定范围操作、身份验证与任务交接 |
+| `release_control.py` / `release_runner.py` | 受限请求入口、独立执行与恢复 |
+| `release_initial.py` | 管理员专用首次维护窗口启动 |
+| `install-release-control.py` | 一次性安装，未在生产执行 |
+| `ops/systemd/vsp-sub2api-release.service` | systemd 发布执行器及 ExecStopPost 恢复 |
 
-```bash
-sudo -n /usr/local/sbin/vsp-sub2api-allocator-deploy
-```
+旧 `build.sh`、`install.sh`、`deploy-app-release.sh`、`switch-app-slot.sh` 和旧免密安装器已从工作区移除，历史仍在 Git 中；不要再使用旧命令绕开新流程。
 
-The sudoers rules permit only the two no-argument wrappers. The wrappers and their
-privileged dependencies are root-owned copies under `/usr/local`; editable
-repository scripts are never executed with passwordless root privileges. Run
-the installer again only when intentionally updating the privileged deployment
-logic.
+## 验证与待办
+
+- 本地 Python/结构/故障模拟检查已通过。
+- 真实私有 Nginx 测试验证了 HTTP/2 流、慢上传和无效配置；不使用生产端口或真实推理请求。
+- Go service / server 两包全量测试及完整 embed 构建已通过。
+- 正式构建拒绝未提交工作区的行为已验证；当前未生成正式新版包、未安装权限、未切换 Babel。
+
+剩余步骤是推送候选提交并正式构建、审阅一次性安装操作、用户安排维护窗口并首次启动验收。生产安装和切换仍分别确认；之后再处理后续 Bug、版本升级和功能调整。

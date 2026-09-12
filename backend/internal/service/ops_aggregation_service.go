@@ -147,6 +147,12 @@ func (s *OpsAggregationService) dailyLoop() {
 }
 
 func (s *OpsAggregationService) aggregateHourly() {
+	leaseEnd, leaseOwned := beginDeploymentJob()
+	if !leaseOwned {
+		return
+	}
+	defer leaseEnd()
+
 	if s == nil || s.opsRepo == nil {
 		return
 	}
@@ -247,6 +253,12 @@ func (s *OpsAggregationService) aggregateHourly() {
 }
 
 func (s *OpsAggregationService) aggregateDaily() {
+	leaseEnd, leaseOwned := beginDeploymentJob()
+	if !leaseOwned {
+		return
+	}
+	defer leaseEnd()
+
 	if s == nil || s.opsRepo == nil {
 		return
 	}

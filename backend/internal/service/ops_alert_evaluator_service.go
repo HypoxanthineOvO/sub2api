@@ -154,6 +154,12 @@ func (s *OpsAlertEvaluatorService) getInterval() time.Duration {
 }
 
 func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
+	leaseEnd, leaseOwned := beginDeploymentJob()
+	if !leaseOwned {
+		return
+	}
+	defer leaseEnd()
+
 	if s == nil || s.opsRepo == nil {
 		return
 	}

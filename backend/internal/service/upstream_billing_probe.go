@@ -339,7 +339,7 @@ func (s *UpstreamBillingProbeService) Stop() {
 
 func (s *UpstreamBillingProbeService) runLoop() {
 	defer s.wg.Done()
-	_ = s.RunDue(s.parentCtx)
+	_ = s.runScheduledDue(s.parentCtx)
 	ticker := time.NewTicker(upstreamBillingProbeCycleInterval)
 	defer ticker.Stop()
 	for {
@@ -347,11 +347,20 @@ func (s *UpstreamBillingProbeService) runLoop() {
 		case <-s.parentCtx.Done():
 			return
 		case <-ticker.C:
-			if err := s.RunDue(s.parentCtx); err != nil {
+			if err := s.runScheduledDue(s.parentCtx); err != nil {
 				logger.LegacyPrintf("service.upstream_billing_probe", "run_due_failed: err=%v", err)
 			}
 		}
 	}
+}
+
+func (s *UpstreamBillingProbeService) runScheduledDue(ctx context.Context) error {
+	leaseEnd, leaseOwned := beginDeploymentJob()
+	if !leaseOwned {
+		return nil
+	}
+	defer leaseEnd()
+	return s.RunDue(ctx)
 }
 
 // RunDue executes at most one bounded batch of due accounts.

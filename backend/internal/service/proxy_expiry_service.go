@@ -50,6 +50,12 @@ func (s *ProxyExpiryService) Stop() {
 }
 
 func (s *ProxyExpiryService) runOnce() {
+	leaseEnd, leaseOwned := beginDeploymentJob()
+	if !leaseOwned {
+		return
+	}
+	defer leaseEnd()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	changed, err := s.proxyRepo.SweepExpiredProxies(ctx, time.Now())

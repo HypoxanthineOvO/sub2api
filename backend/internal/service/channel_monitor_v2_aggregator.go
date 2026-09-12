@@ -214,6 +214,12 @@ func (s *ChannelMonitorV2Aggregator) wait(interval time.Duration) bool {
 }
 
 func (s *ChannelMonitorV2Aggregator) runOnce() {
+	leaseEnd, leaseOwned := beginDeploymentJob()
+	if !leaseOwned {
+		return
+	}
+	defer leaseEnd()
+
 	s.mu.Lock()
 	parent := s.ctx
 	s.mu.Unlock()

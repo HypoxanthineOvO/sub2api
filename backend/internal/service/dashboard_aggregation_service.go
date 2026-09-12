@@ -182,6 +182,12 @@ func (s *DashboardAggregationService) TriggerRecomputeRange(start, end time.Time
 }
 
 func (s *DashboardAggregationService) recomputeRecentDays() {
+	leaseEnd, leaseOwned := beginDeploymentJob()
+	if !leaseOwned {
+		return
+	}
+	defer leaseEnd()
+
 	days := s.cfg.RecomputeDays
 	if days <= 0 {
 		return
@@ -216,6 +222,12 @@ func (s *DashboardAggregationService) recomputeRange(ctx context.Context, start,
 }
 
 func (s *DashboardAggregationService) runScheduledAggregation() {
+	leaseEnd, leaseOwned := beginDeploymentJob()
+	if !leaseOwned {
+		return
+	}
+	defer leaseEnd()
+
 	if !atomic.CompareAndSwapInt32(&s.running, 0, 1) {
 		return
 	}
@@ -282,6 +294,12 @@ func (s *DashboardAggregationService) runScheduledGroupUsageSync() {
 }
 
 func (s *DashboardAggregationService) runStartupGroupUsageSync() {
+	leaseEnd, leaseOwned := beginDeploymentJob()
+	if !leaseOwned {
+		return
+	}
+	defer leaseEnd()
+
 	ctx, cancel := context.WithTimeout(context.Background(), defaultDashboardAggregationBackfillTimeout)
 	defer cancel()
 	release, ok := tryAcquireSingletonLeaderLock(ctx, s.lockCache, s.db, dashboardAggregationGroupUsageBackfillLeaderLockKey, s.instanceID, dashboardAggregationGroupUsageBackfillLeaderLockTTL)
