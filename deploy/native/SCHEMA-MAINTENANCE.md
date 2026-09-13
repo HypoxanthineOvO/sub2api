@@ -1,5 +1,7 @@
 # Babel 数据库维护入口
 
+**最新执行状态：2026-09-14 已上线成功。** 续跑后的 A 首启 complete，B 数据库维护/放量作业 `8f9dd6789f214886b8a24c65343e0e71` complete；Blue release `af8b6ea163e6-1da8e3276114` 回源健康 200，64 条模型目录哈希一致，受保护服务 PID 未变。公网自动探针仍为 Cloudflare 403，BaseURL/DeepSeek 自定义价卡待处理。新服务已经开放写入，勿重复安装/迁移或直接恢复旧库。完整证据见 `.pipeline/plans/2026-09-14-production-result.md`；下文准备/回滚描述保留为历史与操作说明。
+
 ## 2026-09-14 首次真实上线回滚与续跑
 
 第一次执行已成功安装发布器，但作业 `dd44aa89607943869ca58dcb7ad9d58b` 在 A 的 initial_switching/observe 阶段因公网 HTTPError 回滚。只读复核：旧 Blue 已恢复（PID 184855），19820 健康 200，Green 停止，B/schema 升级尚未启动。Babel 的真实回源 8081 健康 200、公网 `.tech` 返回 Cloudflare 403。此前发现的探针拦截与强制公网门禁冲突，没有在首发前处理，这是控制器准备遗漏。
