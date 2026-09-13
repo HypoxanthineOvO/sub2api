@@ -24,6 +24,7 @@ def parser():
     s.add_argument('--accept-restore', action='store_true', required=True)
     s.add_argument('--accept-model-allowlist', action='store_true', required=True)
     s.add_argument('--accept-cache-prefixes', action='store_true', required=True)
+    s.add_argument('--accept-unrehearsed', action='store_true', help='administrator accepts proceeding without a restore rehearsal; backup remains mandatory')
     for op in ('activate', 'abort'):
         c = sub.add_parser(op); c.add_argument('job'); c.add_argument('--maintenance-window', action='store_true', required=True)
         if op == 'abort': c.add_argument('--accept-restore', action='store_true', required=True)
@@ -57,7 +58,7 @@ def main():
                 if phase not in TERMINAL or phase == 'recovery_failed': raise ReleaseError('unresolved prior release')
             job = uuid.uuid4().hex
             request = {'job': job, 'operation': 'schema-' + args.operation, 'database': args.database}
-            if args.operation == 'stage': request.update(release=args.release, expected_old=args.from_release)
+            if args.operation == 'stage': request.update(release=args.release, expected_old=args.from_release, accept_unrehearsed=args.accept_unrehearsed)
             atomic(STATE / 'jobs' / (job + '.json'), {'phase': 'queued', 'job': job, 'schema_rehearsal': args.operation == 'rehearse'})
         atomic(STATE / 'request.json', request)
         try: run('systemctl', 'start', '--no-block', 'vsp-sub2api-release.service')

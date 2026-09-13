@@ -11,7 +11,7 @@ import urllib.request
 
 from release_core import ReleaseError, canonical, digest
 from release_host import Host, STATE, ROOT, ACTIVE_LINK, SLOT_ENV, PORTS, atomic, info, load, run, trusted, unit, nginx_workers, generation_alive, has_connections
-from release_inspect import runtime_environment, database_environment
+from release_inspect import runtime_environment
 from release_schema_data import Database, RedisCaches
 
 BACKUPS = Path('/var/backups/vsp-sub2api-schema')
@@ -75,8 +75,9 @@ def restore_app_tree(snapshot, target, archive, uid, gid):
 
 
 class SchemaHost(Host):
-    def __init__(self, job):
+    def __init__(self, job, *, accept_unrehearsed=False):
         super().__init__(job)
+        self.accept_unrehearsed = accept_unrehearsed is True
         self.policy = load(POLICY)
         names = {'235_group_model_allowlist.sql', '236_group_model_allowlist_repair.sql', '237_add_minimax_platform.sql'}
         if self.policy.get('format') != 1 or set(self.policy.get('migrations', {})) != names:
@@ -92,12 +93,12 @@ class SchemaHost(Host):
         else:
             active = self.active()
             self.credentials = runtime_environment(info(unit(active['slot']))['MainPID'])
-        self.db = Database(database_environment(self.credentials))
+        self.db = Database.maintenance(self.credentials)
         self.caches = RedisCaches(self.credentials)
         self.route_hashes = load(self.backup / 'routes.json') if (self.backup / 'routes.json').exists() else None
 
     def save_journal(self, journal):
-        super().save_journal({**journal, 'protected': self.protected})
+        super().save_journal({**journal, 'protected': self.protected, 'accept_unrehearsed': self.accept_unrehearsed})
 
     def check_migrations(self, previous, candidate):
         if previous['version'] != '0.2.1' or candidate['version'] != '0.2.4':
@@ -123,9 +124,7 @@ class SchemaHost(Host):
         if self.binding()['database'] != database: raise ReleaseError('database name differs from explicit approval')
         if any(name in self.db.ledger() for name in self.policy['migrations']):
             raise ReleaseError('target migrations already recorded; this is not a fresh upgrade')
-        proof = load(STATE / 'schema-rehearsal.json')
-        if proof['binding'] != self.binding() or proof['ledger'] != self.db.ledger() or proof.get('policy_sha') != hashlib.sha256(canonical(self.policy)).hexdigest() or time.time() - proof['verified_at'] > 86400:
-            raise ReleaseError('a matching restore rehearsal from the last 24 hours is required')
+        self.check_restore_rehearsal()
         for path in (APP_DATA.parent, BACKUPS, GATE_LINK): trusted(path)
         if APP_DATA.is_symlink() or APP_DATA.stat().st_uid != self.cfg['operator_uid']:
             raise ReleaseError('unexpected application data owner/path')
@@ -142,6 +141,12 @@ class SchemaHost(Host):
         # interrupted backup attempts which have not touched the database yet.
         self.private_backup_dir()
         atomic(self.backup / 'routes.json', self.route_hashes)
+
+    def check_restore_rehearsal(self):
+        if self.accept_unrehearsed: return
+        proof = load(STATE / 'schema-rehearsal.json')
+        if proof['binding'] != self.binding() or proof['ledger'] != self.db.ledger() or proof.get('policy_sha') != hashlib.sha256(canonical(self.policy)).hexdigest() or time.time() - proof['verified_at'] > 86400:
+            raise ReleaseError('a matching restore rehearsal from the last 24 hours is required')
 
     def assert_no_pending_batches(self):
         present = self.db.read("SELECT to_json(to_regclass('public.batch_image_jobs') IS NOT NULL);")

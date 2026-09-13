@@ -11,10 +11,12 @@ import subprocess
 import time
 
 from release_core import ReleaseError, canonical, digest
-from release_inspect import DB_IDENTITY_SQL, PG_BIN, read_query
+from release_inspect import DB_IDENTITY_SQL, PG_BIN, database_environment, read_query
 
 CACHE_PATTERNS = ('apikey:auth:*', 'billing:balance:*', 'billing:sub:*', 'sched:*', 'sub2api:dashboard:stats:v1')
 MAX_CACHE_BYTES = 64 * 1024 * 1024
+ADMIN_SOCKET = '/run/vsp-sub2api-production-postgresql'
+BABEL_SYSTEM_IDENTIFIER = '7683195181800662940'
 
 
 def identifier(name):
@@ -22,11 +24,33 @@ def identifier(name):
 
 
 class Database:
-    def __init__(self, env):
+    def __init__(self, env, *, as_postgres=False):
         self.env = dict(env)
+        self.as_postgres = as_postgres
+
+    @classmethod
+    def maintenance(cls, values):
+        # The application keeps its restricted role. Only root's DB subprocesses
+        # drop to the fixed local postgres identity; never inherit app credentials.
+        app_env = database_environment(values)
+        env = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'PGCONNECT_TIMEOUT': '5',
+               'PGHOST': ADMIN_SOCKET, 'PGPORT': '5432', 'PGUSER': 'postgres',
+               'PGDATABASE': app_env['PGDATABASE'], 'PGSSLMODE': 'disable',
+               'PGPASSFILE': '/dev/null'}
+        database = cls(env, as_postgres=True)
+        admin = database.read(DB_IDENTITY_SQL)
+        if admin['system_identifier'] != BABEL_SYSTEM_IDENTIFIER or admin['role'] != 'postgres' or not admin['superuser'] or not admin['createdb']:
+            raise ReleaseError('local maintenance administrator or database cluster differs from the reviewed target')
+        try: app = read_query(app_env, DB_IDENTITY_SQL)
+        except Exception: raise ReleaseError('application database binding could not be verified') from None
+        if any(app[key] != admin[key] for key in ('database', 'oid', 'owner')):
+            raise ReleaseError('application and maintenance database bindings differ')
+        return database
 
     def read(self, sql):
-        try: return read_query(self.env, sql)
+        try:
+            return json.loads(self.command('psql', '-X', '-w', '-At', '-v', 'ON_ERROR_STOP=1', '-c', sql,
+                                           readonly=True, timeout=15))
         except Exception: raise ReleaseError('database verification failed; credentials withheld') from None
 
     def identity(self):
@@ -51,19 +75,31 @@ class Database:
             time.sleep(0.25)
         raise ReleaseError('other database connections remain; no connections were terminated')
 
-    def command(self, program, *args, target=None, timeout=900):
+    def command(self, program, *args, target=None, timeout=900, readonly=False, stdin=None, stdout=None):
         env = {**self.env, 'PGOPTIONS': '-c lock_timeout=10000 -c statement_timeout=900000'}
+        if readonly: env['PGOPTIONS'] = '-c default_transaction_read_only=on -c statement_timeout=10000 -c lock_timeout=1000'
         if target is not None: env['PGDATABASE'] = target
-        result = subprocess.run([str(PG_BIN / program), *args], env=env, capture_output=True, timeout=timeout)
+        identity = {'user': 'postgres', 'group': 'postgres', 'extra_groups': ()} if self.as_postgres else {}
+        try:
+            result = subprocess.run([str(PG_BIN / program), *args], env=env, cwd='/',
+                                    stdin=stdin if stdin is not None else subprocess.DEVNULL,
+                                    stdout=stdout if stdout is not None else subprocess.PIPE,
+                                    stderr=subprocess.PIPE, timeout=timeout, **identity)
+        except (OSError, subprocess.TimeoutExpired):
+            raise ReleaseError(f'{program} could not complete; database details and credentials withheld') from None
         if result.returncode: raise ReleaseError(f'{program} failed; database details and credentials withheld')
         return result.stdout
 
     def dump(self, path):
-        # pg_dump creates its file itself; the parent is private, and existing files are rejected.
-        if Path(path).exists(): raise ReleaseError('backup dump already exists')
-        self.command('pg_dump', '-w', '-Fc', '--file', str(path))
-        Path(path).chmod(0o600)
-        self.command('pg_restore', '--list', str(path))
+        # Root opens private files before dropping the child identity. PostgreSQL
+        # receives only standard I/O descriptors, never access to the backup tree.
+        try: fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        except FileExistsError: raise ReleaseError('backup dump already exists') from None
+        with os.fdopen(fd, 'wb') as stream:
+            self.command('pg_dump', '-w', '-Fc', stdout=stream)
+            stream.flush(); os.fsync(stream.fileno())
+        with Path(path).open('rb') as stream:
+            self.command('pg_restore', '--list', stdin=stream, stdout=subprocess.DEVNULL)
         return digest(path)
 
     def restore(self, path, expected_digest, binding, expected_tables, expected_counts, expected_ledger):
@@ -73,8 +109,9 @@ class Database:
         self.require_idle()
         # Exact 235-237 changes do not add tables. Restore into the SAME database,
         # transactionally; never --create, DROP DATABASE, or a shared-cluster reset.
-        self.command('pg_restore', '-w', '--clean', '--if-exists', '--exit-on-error',
-                     '--single-transaction', '--dbname', binding['database'], str(path))
+        with Path(path).open('rb') as stream:
+            self.command('pg_restore', '-w', '--clean', '--if-exists', '--exit-on-error',
+                         '--single-transaction', '--dbname', binding['database'], stdin=stream)
         if self.identity() != binding or self.counts() != expected_counts or self.ledger() != expected_ledger:
             raise ReleaseError('restored database did not match the backup checkpoint')
 
@@ -87,8 +124,9 @@ class Database:
         try:
             self.command('psql', '-X', '-w', '-v', 'ON_ERROR_STOP=1', '-c', f'REVOKE ALL ON DATABASE {identifier(name)} FROM PUBLIC;')
             start = time.monotonic()
-            self.command('pg_restore', '-w', '--no-owner', '--no-acl', '--exit-on-error', '--single-transaction', '--dbname', name, str(dump_path))
-            clone = Database({**self.env, 'PGDATABASE': name})
+            with Path(dump_path).open('rb') as stream:
+                self.command('pg_restore', '-w', '--no-owner', '--no-acl', '--exit-on-error', '--single-transaction', '--dbname', name, stdin=stream)
+            clone = Database({**self.env, 'PGDATABASE': name}, as_postgres=self.as_postgres)
             if clone.tables() != self.tables() or clone.ledger() != self.ledger():
                 raise ReleaseError('rehearsal schema/ledger differs from the running source')
             binding, tables, counts, ledger = clone.identity(), clone.tables(), clone.counts(), clone.ledger()

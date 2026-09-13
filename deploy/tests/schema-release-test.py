@@ -26,7 +26,7 @@ from release_control import parse_request
 from release_inspect import database_environment, read_query
 from release_schema import parser
 from release_schema_core import SchemaEngine
-from release_schema_data import Database, RedisCaches
+from release_schema_data import ADMIN_SOCKET, BABEL_SYSTEM_IDENTIFIER, Database, RedisCaches
 from release_schema_host import SchemaHost, restore_app_tree, tree_digest
 from release_host import generation_alive
 from inspect_babel import remote_command
@@ -135,6 +135,96 @@ class EngineTests(unittest.TestCase):
 
 
 class BoundaryTests(unittest.TestCase):
+    def test_only_explicit_admin_acceptance_skips_rehearsal_not_backup(self):
+        args = ['stage', 'a', '--from-release', 'b', '--database', 'sub2api', '--maintenance-window', '--accept-restore', '--accept-model-allowlist', '--accept-cache-prefixes']
+        self.assertFalse(parser().parse_args(args).accept_unrehearsed)
+        self.assertTrue(parser().parse_args([*args, '--accept-unrehearsed']).accept_unrehearsed)
+        with self.assertRaises(ReleaseError): parse_request(json.dumps({'operation': 'deploy', 'release': 'a' * 12 + '-' + 'b' * 12, 'accept_unrehearsed': True}))
+        host = object.__new__(SchemaHost); host.accept_unrehearsed = True
+        with patch('release_schema_host.load') as load:
+            host.check_restore_rehearsal(); load.assert_not_called()
+            host.accept_unrehearsed = False; load.side_effect = ReleaseError('missing rehearsal')
+            with self.assertRaises(ReleaseError): host.check_restore_rehearsal()
+        h = FakeHost(); SchemaEngine(h).stage(h.new, h.old['release'], 'sub2api')
+        self.assertIn('backup', h.events)
+
+    def test_maintenance_uses_fixed_admin_and_matches_the_app_binding(self):
+        values = {'DATABASE_HOST': '127.0.0.1', 'DATABASE_PORT': '5432', 'DATABASE_USER': 'sub2api',
+                  'DATABASE_DBNAME': 'sub2api', 'DATABASE_PASSWORD': 'DO_NOT_FORWARD'}
+        app = {'database': 'sub2api', 'oid': 22068, 'owner': 'sub2api', 'system_identifier': None,
+               'role': 'sub2api', 'superuser': False, 'createdb': False}
+        admin = {**app, 'system_identifier': BABEL_SYSTEM_IDENTIFIER, 'role': 'postgres', 'superuser': True, 'createdb': True}
+        with patch.object(Database, 'read', return_value=admin), patch('release_schema_data.read_query', return_value=app):
+            database = Database.maintenance(values)
+        self.assertTrue(database.as_postgres)
+        self.assertEqual(database.env['PGHOST'], ADMIN_SOCKET)
+        self.assertEqual(database.env['PGUSER'], 'postgres')
+        self.assertEqual(database.env['PGPASSFILE'], '/dev/null')
+        self.assertNotIn('PGPASSWORD', database.env)
+        self.assertNotIn('DO_NOT_FORWARD', str(database.env))
+        for changed in ({**admin, 'system_identifier': 'another-cluster'}, {**admin, 'superuser': False}, {**admin, 'oid': 999}):
+            with patch.object(Database, 'read', return_value=changed), patch('release_schema_data.read_query', return_value=app):
+                with self.assertRaises(ReleaseError): Database.maintenance(values)
+
+    def test_admin_subprocess_drops_uid_gid_groups_and_queries_read_only(self):
+        database = Database({'PGDATABASE': 'sub2api', 'PGUSER': 'postgres'}, as_postgres=True)
+        with patch('release_schema_data.subprocess.run', return_value=subprocess.CompletedProcess([], 0, b'1', b'')) as run:
+            self.assertEqual(database.read('SELECT 1;'), 1)
+            options = run.call_args.kwargs
+            self.assertEqual((options['user'], options['group'], options['extra_groups']), ('postgres', 'postgres', ()))
+            self.assertEqual(options['cwd'], '/')
+            self.assertIn('default_transaction_read_only=on', options['env']['PGOPTIONS'])
+        for error in (PermissionError('private detail'), subprocess.TimeoutExpired(['private detail'], 1)):
+            with patch('release_schema_data.subprocess.run', side_effect=error):
+                with self.assertRaises(ReleaseError) as caught: database.command('psql')
+                self.assertNotIn('private detail', str(caught.exception))
+
+    def test_dump_uses_private_file_descriptors_not_paths_or_memory_buffers(self):
+        database = Database({'PGDATABASE': 'sub2api'}, as_postgres=True)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); destination = root / 'backup.dump'; calls = []
+            def execute(argv, **options):
+                calls.append(argv)
+                self.assertNotIn(str(destination), argv)
+                self.assertEqual(options['user'], 'postgres')
+                if argv[0].endswith('/pg_dump'):
+                    self.assertEqual(os.fstat(options['stdout'].fileno()).st_mode & 0o777, 0o600)
+                    options['stdout'].write(b'private archive')
+                else: self.assertEqual(options['stdin'].read(), b'private archive')
+                return subprocess.CompletedProcess(argv, 0, None, b'')
+            with patch('release_schema_data.subprocess.run', side_effect=execute):
+                checksum = database.dump(destination)
+                with self.assertRaises(ReleaseError): database.dump(destination)
+                link = root / 'link'; link.symlink_to(destination)
+                with self.assertRaises(ReleaseError): database.dump(link)
+            self.assertEqual(checksum, hashlib.sha256(b'private archive').hexdigest())
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(root.stat().st_mode & 0o777, 0o700)
+
+    def test_clone_keeps_admin_identity_and_streams_restore(self):
+        database = Database({'PGDATABASE': 'sub2api'}, as_postgres=True)
+        name = '_vsp_restore_' + 'e' * 32
+        with tempfile.TemporaryDirectory() as directory:
+            dump = Path(directory) / 'backup.dump'; dump.write_bytes(b'archive')
+            def execute(argv, **options):
+                self.assertEqual(options['user'], 'postgres')
+                self.assertNotIn(str(dump), argv)
+                if argv[0].endswith('/pg_restore'): self.assertEqual(options['stdin'].read(), b'archive')
+                return subprocess.CompletedProcess(argv, 0, b'', b'')
+            def restored(clone, *args):
+                self.assertTrue(clone.as_postgres); self.assertEqual(clone.env['PGDATABASE'], name)
+            with patch('release_schema_data.subprocess.run', side_effect=execute) as run, patch.object(Database, 'tables', return_value=[]), patch.object(Database, 'ledger', return_value={}), patch.object(Database, 'counts', return_value={}), patch.object(Database, 'identity', return_value={}), patch.object(Database, 'restore', autospec=True, side_effect=restored):
+                database.rehearsal(dump, name, {'test.sql': {'sql': 'SELECT 1;', 'ledger_sha256': 'a' * 64}})
+                self.assertTrue(any(call.kwargs['env']['PGDATABASE'] == name for call in run.call_args_list))
+
+    def test_restore_rejects_changed_database_before_running_a_command(self):
+        database = Database({'PGDATABASE': 'sub2api'}, as_postgres=True)
+        binding = {'database': 'sub2api', 'oid': 22068, 'owner': 'sub2api', 'system_identifier': BABEL_SYSTEM_IDENTIFIER}
+        for key, value in (('database', 'other'), ('oid', 999), ('owner', 'other'), ('system_identifier', 'other')):
+            with patch.object(database, 'identity', return_value={**binding, key: value}), patch.object(database, 'command') as command:
+                with self.assertRaises(ReleaseError): database.restore(Path('unused'), 'unused', binding, [], {}, {})
+                command.assert_not_called()
+
     def test_build_metadata_uses_the_exported_go_module_toolchain(self):
         source = ast.parse((NATIVE / 'release_client.py').read_text())
         calls = [node for node in ast.walk(source) if isinstance(node, ast.Call) and node.args and ast.unparse(node.args[0]) == "['go', 'version']"]
@@ -261,6 +351,7 @@ class DatabaseTests(fixture.UpstreamMigrationTests):
           CREATE TABLE users(id INT PRIMARY KEY,balance NUMERIC); INSERT INTO users VALUES (1,12.5);
           CREATE TABLE schema_migrations(filename TEXT PRIMARY KEY, checksum TEXT NOT NULL);''')
         database = Database(self.env)
+        self.sql('CREATE ROLE vsp_restricted_app NOSUPERUSER NOCREATEDB; ALTER TABLE users OWNER TO vsp_restricted_app;')
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'database.dump'
             binding, tables, counts, ledger = database.identity(), database.tables(), database.counts(), database.ledger()
@@ -280,6 +371,8 @@ class DatabaseTests(fixture.UpstreamMigrationTests):
             self.sql('UPDATE users SET balance=1;')
             database.restore(path, checksum, binding, tables, counts, ledger)
             self.assertEqual(self.sql('SELECT balance FROM users;').stdout.strip(), b'12.5')
+            self.assertEqual(database.read("SELECT json_build_array(rolsuper,rolcreatedb) FROM pg_roles WHERE rolname='vsp_restricted_app';"), [False, False])
+            self.assertEqual(database.read("SELECT to_json(pg_get_userbyid(relowner)) FROM pg_class WHERE oid='users'::regclass;"), 'vsp_restricted_app')
             self.assertEqual(self.sql("SELECT models_list_config->'models'->>0 FROM groups;").stdout.strip(), b'example-model')
             with self.assertRaises(ReleaseError): database.restore(path, 'wrong', binding, tables, counts, ledger)
             self.assertEqual(self.sql('SELECT balance FROM users;').stdout.strip(), b'12.5')

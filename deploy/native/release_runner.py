@@ -18,7 +18,7 @@ def schema_operation(req, initial, recovering):
     if recovering and initial['phase'] in TERMINAL: return
     host = None
     try:
-        host = SchemaHost(req['job'])
+        host = SchemaHost(req['job'], accept_unrehearsed=req.get('accept_unrehearsed', False))
         engine = SchemaEngine(host)
         if recovering:
             if initial.get('schema_rehearsal'):

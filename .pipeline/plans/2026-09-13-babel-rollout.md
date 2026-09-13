@@ -2,7 +2,7 @@
 
 核查时间：2026-09-13 17:14–17:20 +08:00。本文是部署方案，不是已执行记录。本轮仅只读核查 Git、源码和 Babel 状态，没有 push、构建正式包、sudo、上传、安装或生产切换。
 
-2026-09-14 准备更新：用户已授权完成本地准备。管理员维护入口、恢复演练与故障测试已实现；Go 工具链记录已修正，installer 可安全创建缺失的 libexec 父目录。下文“尚未实现/待补”是规划时状态，现以 `deploy/native/SCHEMA-MAINTENANCE.md` 为准。生产仍未安装、未执行。现在只需要用户在 Genesis 交互终端运行 `python3 /home/heyx/Workspace/VSP/VSP-Sub2API/deploy/native/inspect_babel.py`，提供只读结果后才能填写实际数据库和发布 ID。
+2026-09-14 准备更新：用户已授权完成本地准备。管理员维护入口、恢复演练与故障测试已实现；Go 工具链记录已修正，installer 可安全创建缺失的 libexec 父目录。用户已返回只读预检及 postgres 管理员连接结果；本地维护工具已调整为独立管理员身份，不对应用账号提权。数据库为 sub2api / OID 22068，集群标识 7683195181800662940。下文“尚未实现/待补/尚未核实”是规划时状态，最新事实以 `.pipeline/plans/2026-09-14-maintenance-preparation.md` 和 `deploy/native/SCHEMA-MAINTENANCE.md` 为准。生产仍未安装发布器、未执行恢复演练或切换；正式包及 release ID 尚待批准后构建。
 
 ## 结论
 
