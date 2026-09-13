@@ -942,18 +942,15 @@ function generateOpenAIFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const isWindows = activeTab.value === 'windows'
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
 
-  const model = selectCodexCatalogModel('gpt-5.6-sol')
+  const model = selectCodexCatalogModel('gpt-5.5')
   const reasoningEffortLine = codexReasoningEffortTomlLine(model)
 
   // config.toml content
   const configContent = `model_provider = "OpenAI"
 model = "${model}"
 review_model = "${model}"
-# Other supported GPT-5.6 models: gpt-5.6-terra, gpt-5.6-luna
 ${reasoningEffortLine}disable_response_storage = true
 model_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"
-model_context_window = 1050000
-model_auto_compact_token_limit = 900000
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
 
@@ -1243,7 +1240,7 @@ function generateRoutedCodexFiles(
   }
   const preferredModel = preferredModels[platform] || ''
   const model = selectCodexCatalogModel(preferredModel)
-  const labels: Record<GroupPlatform, string> = {
+  const labels: Partial<Record<GroupPlatform, string>> = {
     anthropic: 'Anthropic',
     openai: 'OpenAI',
     gemini: 'Gemini',
@@ -1253,12 +1250,9 @@ function generateRoutedCodexFiles(
     zhipu: 'Zhipu',
     deepseek: 'DeepSeek',
     minimax: 'MiniMax',
-    mimo: 'MiMo',
-    hunyuan: 'Hunyuan',
-    qwen: 'Qwen',
     composite: 'Composite'
   }
-  const label = labels[platform]
+  const label = labels[platform] ?? platform
   const envContent = isWindows
     ? `$env:SUB2API_API_KEY="${apiKey}"`
     : `export SUB2API_API_KEY="${apiKey}"`
@@ -1295,18 +1289,15 @@ supports_websockets = false`
 function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const isWindows = activeTab.value === 'windows'
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
-  const model = selectCodexCatalogModel('gpt-5.6-sol')
+  const model = selectCodexCatalogModel('gpt-5.5')
   const reasoningEffortLine = codexReasoningEffortTomlLine(model)
 
   // config.toml content with WebSocket v2
   const configContent = `model_provider = "OpenAI"
 model = "${model}"
 review_model = "${model}"
-# Other supported GPT-5.6 models: gpt-5.6-terra, gpt-5.6-luna
 ${reasoningEffortLine}disable_response_storage = true
 model_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"
-model_context_window = 1050000
-model_auto_compact_token_limit = 900000
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
 
