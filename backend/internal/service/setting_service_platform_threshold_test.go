@@ -63,11 +63,18 @@ func TestValidateAndNormalizeAccountSchedulingThresholds_FillsMissingPlatforms(t
 	require.Equal(t, 91, normalized[PlatformOpenAI])
 	require.Equal(t, 100, normalized[PlatformAnthropic])
 	require.Equal(t, 100, normalized[PlatformGrok])
-	require.Equal(t, 100, normalized[PlatformMinimax])
+	require.NotContains(t, normalized, PlatformMiniMax)
 	require.NotContains(t, normalized, PlatformGemini)
 	require.NotContains(t, normalized, PlatformMiMo)
 	require.NotContains(t, normalized, "kiro")
 	require.NotContains(t, normalized, PlatformAntigravity)
+
+	// CN thresholds are opt-in; retaining a platform must not enable its policy.
+	normalized, err = validateAndNormalizeAccountSchedulingThresholds(map[string]int{
+		PlatformMiniMax: 85,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 85, normalized[PlatformMiniMax])
 }
 
 func TestValidateAndNormalizeAccountSchedulingThresholds_RejectsUnsupportedPlatforms(t *testing.T) {

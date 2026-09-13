@@ -120,7 +120,7 @@ func TestAdaptiveProtocolRoutesMinimaxMiMoResponsesShapeToNativeResponses(t *tes
 		platform string
 		model    string
 	}{
-		{platform: PlatformMinimax, model: "MiniMax-M3"},
+		{platform: PlatformMiniMax, model: "MiniMax-M3"},
 		{platform: PlatformMiMo, model: "mimo-v2.5"},
 	} {
 		t.Run(tc.platform, func(t *testing.T) {

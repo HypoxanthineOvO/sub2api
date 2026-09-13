@@ -47,7 +47,7 @@ const (
 	PlatformKimi      = domain.PlatformKimi
 	PlatformZhipu     = domain.PlatformZhipu
 	PlatformDeepseek  = domain.PlatformDeepseek
-	PlatformMinimax   = domain.PlatformMinimax
+	PlatformMiniMax   = domain.PlatformMiniMax
 	PlatformMiMo      = domain.PlatformMiMo
 	PlatformHunyuan   = domain.PlatformHunyuan
 	PlatformQwen      = domain.PlatformQwen
@@ -79,7 +79,7 @@ const (
 	DefaultZhipuPayGBaseURL   = "https://open.bigmodel.cn/api/paas/v4"
 	DefaultZhipuCodingBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
 	DefaultDeepseekBaseURL    = "https://api.deepseek.com"
-	DefaultMinimaxBaseURL     = "https://api.minimaxi.com/v1"
+	DefaultMiniMaxBaseURL     = "https://api.minimaxi.com/v1"
 	DefaultMiMoPayGBaseURL    = "https://api.xiaomimimo.com/v1"
 	DefaultMiMoCodingBaseURL  = "https://token-plan-cn.xiaomimimo.com/v1"
 	// PAYG/enterprise TokenHub is the production-safe Hunyuan endpoint. Personal
@@ -96,7 +96,7 @@ const (
 	DefaultKimiCodingAnthropicBaseURL = "https://api.kimi.com/coding"
 	DefaultZhipuAnthropicBaseURL      = "https://open.bigmodel.cn/api/anthropic"
 	DefaultDeepseekAnthropicBaseURL   = "https://api.deepseek.com/anthropic"
-	DefaultMinimaxAnthropicBaseURL    = "https://api.minimaxi.com/anthropic"
+	DefaultMiniMaxAnthropicBaseURL    = "https://api.minimaxi.com/anthropic"
 	DefaultMiMoPayGAnthropicBaseURL   = "https://api.xiaomimimo.com/anthropic"
 	DefaultMiMoCodingAnthropicBaseURL = "https://token-plan-cn.xiaomimimo.com/anthropic"
 )
@@ -104,7 +104,7 @@ const (
 // IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商。
 func IsCNProvider(platform string) bool {
 	switch platform {
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMinimax, PlatformMiMo, PlatformHunyuan, PlatformQwen:
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformMiMo, PlatformHunyuan, PlatformQwen:
 		return true
 	default:
 		return false
@@ -114,7 +114,7 @@ func IsCNProvider(platform string) bool {
 // SupportsNativeResponses 报告国产供应商是否提供原生 OpenAI Responses 端点。
 func SupportsNativeResponses(platform string) bool {
 	switch platform {
-	case PlatformDeepseek, PlatformMinimax, PlatformMiMo:
+	case PlatformDeepseek, PlatformMiniMax, PlatformMiMo:
 		return true
 	default:
 		return false
@@ -124,7 +124,7 @@ func SupportsNativeResponses(platform string) bool {
 // SupportsCodingPlanQuotaProbe 报告 Coding Plan 是否有受支持的公开额度查询端点。
 func SupportsCodingPlanQuotaProbe(platform string) bool {
 	switch platform {
-	case PlatformKimi, PlatformZhipu, PlatformMinimax:
+	case PlatformKimi, PlatformZhipu, PlatformMiniMax:
 		return true
 	default:
 		return false
@@ -138,7 +138,7 @@ func SupportsCodingPlanQuotaProbe(platform string) bool {
 func DefaultCNProviderModelIDs(platform string) []string {
 	var models []string
 	switch platform {
-	case PlatformMinimax:
+	case PlatformMiniMax:
 		models = []string{
 			"MiniMax-M3",
 			"MiniMax-M2.7", "MiniMax-M2.7-highspeed",
@@ -167,7 +167,7 @@ var AllowedQuotaPlatforms = []string{
 	PlatformKimi,
 	PlatformZhipu,
 	PlatformDeepseek,
-	PlatformMinimax,
+	PlatformMiniMax,
 	PlatformMiMo,
 	PlatformHunyuan,
 	PlatformQwen,
@@ -182,7 +182,7 @@ var AllowedSchedulingThresholdPlatforms = []string{
 	PlatformGrok,
 	PlatformKimi,
 	PlatformZhipu,
-	PlatformMinimax,
+	PlatformMiniMax,
 }
 
 // IsAllowedQuotaPlatform 报告 s 是否为合法的 quota platform 标识。
@@ -548,6 +548,10 @@ const (
 	// fail-closed (only the literal "true" enables it). Admin endpoints always
 	// keep the full snapshots regardless of this flag.
 	SettingKeyChannelMonitorShowQuota = "channel_monitor_show_quota"
+	// SettingKeyChannelMonitorHideUserRanking hides the user ranking tab and
+	// /users payload from non-admin channel-monitor v2 viewers.
+	// Default false (keep the current ranking tab). Admin endpoints always keep it.
+	SettingKeyChannelMonitorHideUserRanking = "channel_monitor_hide_user_ranking"
 
 	// SettingKeyGrokDefaultTextModel is the fallback Grok text model for empty
 	// request models and built-in Grok aliases (e.g. "grok" → this id). Default grok-4.5.

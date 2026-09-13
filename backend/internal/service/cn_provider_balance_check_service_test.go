@@ -49,12 +49,12 @@ func TestCNProviderBalanceCheckRunOnceProbesCodingPlanQuota(t *testing.T) {
 		Credentials: map[string]any{"account_mode": "coding"}}
 	zhipuCoding := Account{ID: 4, Platform: PlatformZhipu, Type: AccountTypeAPIKey, Status: StatusActive,
 		Credentials: map[string]any{"account_mode": "coding"}}
-	minimaxCoding := Account{ID: 5, Platform: PlatformMinimax, Type: AccountTypeAPIKey, Status: StatusActive,
+	minimaxCoding := Account{ID: 5, Platform: PlatformMiniMax, Type: AccountTypeAPIKey, Status: StatusActive,
 		Credentials: map[string]any{"account_mode": "coding"}}
 	repo := &fakeCNCheckRepo{byPlatform: map[string][]Account{
 		PlatformKimi:    {kimiActive, kimiPaused, kimiInactive},
 		PlatformZhipu:   {zhipuCoding},
-		PlatformMinimax: {minimaxCoding},
+		PlatformMiniMax: {minimaxCoding},
 	}}
 	prober := &fakeCNQuotaProber{}
 	svc := &CNProviderBalanceCheckService{

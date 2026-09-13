@@ -96,7 +96,7 @@ func TestCodexAPIKeyCompletionKeepsLongContextDefault(t *testing.T) {
 		`{"models":[{"slug":"gpt-5.6-sol","context_window":272000,"max_context_window":1050000}]}`,
 	} {
 		converted := convertOpenAIModelListToCodexManifestForAccount([]byte(source), account)
-		manifest := &CodexModelsManifest{
+		manifest := &OpenAIModelsResponse{
 			Body: converted, upstreamSourceBody: []byte(source),
 			convertedFromOpenAIModelList: string(converted) != source,
 		}

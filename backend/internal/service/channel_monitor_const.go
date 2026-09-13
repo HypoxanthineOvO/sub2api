@@ -71,7 +71,7 @@ const (
 	MonitorProviderKimi        = "kimi"
 	MonitorProviderZhipu       = "zhipu"
 	MonitorProviderDeepseek    = "deepseek"
-	MonitorProviderMinimax     = "minimax"
+	MonitorProviderMiniMax     = "minimax"
 	MonitorProviderMiMo        = "mimo"
 
 	// MonitorCheckMode 检测模式（channel_monitors.check_mode）。

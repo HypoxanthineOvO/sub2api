@@ -30,7 +30,6 @@ import (
 const (
 	cnQuotaUpstreamTimeout = 15 * time.Second
 	cnQuotaMaxBodyBytes    = 256 * 1024
-	minimaxQuotaURL        = "https://www.minimaxi.com/v1/token_plan/remains"
 
 	// Extra 快照键后缀（加 provider 前缀，如 kimi_5h_used_percent）。
 	cnExtraSuffix5hUsed       = "5h_used_percent"
@@ -157,10 +156,9 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 		if zhipuOrg != "" {
 			targetURL += "?type=2"
 		}
-	case PlatformMinimax:
-		// Token Plan 额度 API 不与推理 base_url 同源，固定官方端点以避免
-		// 把订阅 key 发往账号自定义的数据面地址。
-		targetURL = minimaxQuotaURL
+	case PlatformMiniMax:
+		// Resolve only to official CN/Intl quota hosts, never to a custom inference host.
+		targetURL = minimaxQuotaURL(baseURL)
 		authHeader = "Bearer " + apiKey
 	}
 
@@ -181,7 +179,7 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	}
 	req.Header.Set("Authorization", authHeader)
 	req.Header.Set("Accept", "application/json")
-	if provider == PlatformZhipu || provider == PlatformMinimax {
+	if provider == PlatformZhipu || provider == PlatformMiniMax {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	if provider == PlatformZhipu {
@@ -232,7 +230,7 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 			return result, nil
 		}
 	}
-	if provider == PlatformMinimax {
+	if provider == PlatformMiniMax {
 		statusCode, statusMessage, statusErr := minimaxBaseResponseStatus(bodyBytes)
 		if statusErr != nil {
 			result.CredentialValid = true
@@ -258,9 +256,9 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	case PlatformZhipu:
 		tiers = parseZhipuTokenTiers(gjson.GetBytes(bodyBytes, "data"))
 		result.PlanLevel = strings.TrimSpace(gjson.GetBytes(bodyBytes, "data.level").String())
-	case PlatformMinimax:
+	case PlatformMiniMax:
 		var parseErr error
-		tiers, parseErr = parseMinimaxUsageTiers(bodyBytes)
+		tiers, parseErr = parseMiniMaxUsageTiers(bodyBytes)
 		if parseErr != nil {
 			// HTTP 2xx 只能证明凭据被上游接受；未知 schema 不得落空快照或
 			// 被监控器视作一次成功探测。
@@ -268,6 +266,7 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 			result.Error = "Invalid quota response: " + parseErr.Error()
 			return result, nil
 		}
+		result.PlanLevel = strings.TrimSpace(gjson.GetBytes(bodyBytes, "current_subscribe_title").String())
 	}
 	result.Tiers = tiers
 	result.Success = true
@@ -296,10 +295,10 @@ func minimaxBaseResponseStatus(body []byte) (int64, string, error) {
 	return status.Int(), message, nil
 }
 
-// parseMinimaxUsageTiers parses the verified Token Plan response schema.
+// parseMiniMaxUsageTiers parses the verified Token Plan response schema.
 // Only the general model pool drives LLM scheduling; video has independent
 // windows and must never be folded into these thresholds.
-func parseMinimaxUsageTiers(body []byte) ([]CNQuotaTier, error) {
+func parseMiniMaxUsageTiers(body []byte) ([]CNQuotaTier, error) {
 	if !gjson.ValidBytes(body) {
 		return nil, fmt.Errorf("response is not valid JSON")
 	}
@@ -328,6 +327,10 @@ func parseMinimaxUsageTiers(body []byte) ([]CNQuotaTier, error) {
 	)
 	if err != nil {
 		return nil, err
+	}
+	// An explicit inactive weekly status means this plan has no weekly window.
+	if status := general.Get("current_weekly_status"); status.Exists() && status.Int() != 1 {
+		return []CNQuotaTier{fiveHour}, nil
 	}
 	weekly, err := parseMinimaxQuotaWindow(
 		general,
@@ -416,6 +419,16 @@ func zhipuQuotaURL(baseURL string) string {
 func kimiQuotaURL(baseURL string) string {
 	base := strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1")
 	return base + "/v1/usages"
+}
+
+// minimaxQuotaURL 根据推理域名选择 Token Plan / Coding Plan 额度主机。
+// 官方 FAQ 写 www.minimax.io / www.minimaxi.com，实际以 Bearer Key 打 api.*。
+// 国际站 api.minimax.io；国内站 api.minimaxi.com（含 api.minimax.com 与自定义回落）。
+func minimaxQuotaURL(baseURL string) string {
+	if strings.Contains(strings.ToLower(baseURL), "minimax.io") {
+		return "https://api.minimax.io/v1/api/openplatform/coding_plan/remains"
+	}
+	return "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains"
 }
 
 func zhipuQuotaHost(baseURL string) string {

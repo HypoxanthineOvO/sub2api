@@ -14,7 +14,7 @@ func TestProviderAdapterForNativeResponsesProviders(t *testing.T) {
 		path     string
 	}{
 		{provider: MonitorProviderDeepseek, model: "deepseek-v4", path: providerDeepseekResponsesPath},
-		{provider: MonitorProviderMinimax, model: "MiniMax-M3", path: providerOpenAIResponsesPath},
+		{provider: MonitorProviderMiniMax, model: "MiniMax-M3", path: providerOpenAIResponsesPath},
 		{provider: MonitorProviderMiMo, model: "mimo-v2.5", path: providerOpenAIResponsesPath},
 	} {
 		t.Run(tc.provider, func(t *testing.T) {

@@ -229,6 +229,92 @@ func TestKimiQuotaURL(t *testing.T) {
 	require.Equal(t, "https://api.kimi.com/coding/v1/usages", kimiQuotaURL("https://api.kimi.com/coding/v1/"))
 }
 
+func TestMiniMaxQuotaURL(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "https://api.minimax.io/v1/api/openplatform/coding_plan/remains",
+		minimaxQuotaURL("https://api.minimax.io/v1"))
+	require.Equal(t, "https://api.minimax.io/v1/api/openplatform/coding_plan/remains",
+		minimaxQuotaURL("https://api.minimax.io/anthropic"))
+	require.Equal(t, "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains",
+		minimaxQuotaURL("https://api.minimaxi.com/v1"))
+	require.Equal(t, "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains",
+		minimaxQuotaURL("https://api.minimax.com/v1"))
+	require.Equal(t, "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains",
+		minimaxQuotaURL("https://custom.example.com"))
+}
+
+func TestParseMiniMaxUsageTiers(t *testing.T) {
+	t.Parallel()
+	endMs := int64(1_700_000_000_000)
+	weeklyEndMs := endMs + 7*24*60*60*1000
+	body := []byte(`{
+		"base_resp": {"status_code": 0},
+		"current_subscribe_title": "Max",
+		"model_remains": [
+			{"model_name": "video", "current_interval_remaining_percent": 10},
+			{
+				"model_name": "general",
+				"current_interval_remaining_percent": 25,
+				"end_time": 1700000000000,
+				"current_weekly_status": 1,
+				"current_weekly_remaining_percent": 40,
+				"weekly_end_time": 1700604800000
+			}
+		]
+	}`)
+	tiers, err := parseMiniMaxUsageTiers(body)
+	require.NoError(t, err)
+	require.Len(t, tiers, 2)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.InDelta(t, 75, tiers[0].UsedPercent, 1e-9)
+	require.Equal(t, time.UnixMilli(endMs).UTC().Format(time.RFC3339), tiers[0].ResetAt)
+	require.Equal(t, "weekly", tiers[1].Window)
+	require.InDelta(t, 60, tiers[1].UsedPercent, 1e-9)
+	require.Equal(t, time.UnixMilli(weeklyEndMs).UTC().Format(time.RFC3339), tiers[1].ResetAt)
+
+	noWeekly, err := parseMiniMaxUsageTiers([]byte(`{
+		"model_remains": [{
+			"model_name": "general",
+			"current_interval_remaining_percent": 80,
+			"end_time": 1700000000000,
+			"current_weekly_status": 3,
+			"current_weekly_remaining_percent": 10
+		}]
+	}`))
+	require.NoError(t, err)
+	require.Len(t, noWeekly, 1)
+	require.Equal(t, "5h", noWeekly[0].Window)
+	require.InDelta(t, 20, noWeekly[0].UsedPercent, 1e-9)
+
+	invalid, err := parseMiniMaxUsageTiers([]byte(`{"model_remains":[{"model_name":"video","current_interval_remaining_percent":5}]}`))
+	require.Error(t, err)
+	require.Nil(t, invalid)
+}
+
+func TestGetCodingPlanProvider_MiniMax(t *testing.T) {
+	t.Parallel()
+	coding := &Account{Platform: PlatformMiniMax, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"account_mode": AccountModeCoding,
+		"base_url":     "https://api.minimaxi.com/v1",
+	}}
+	require.Equal(t, PlatformMiniMax, coding.GetCodingPlanProvider())
+	intl := &Account{Platform: PlatformMiniMax, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"account_mode": AccountModeCoding,
+		"base_url":     "https://api.minimax.io/anthropic",
+	}}
+	require.Equal(t, PlatformMiniMax, intl.GetCodingPlanProvider())
+	// 未配 base_url 时走国内站默认域名，仍能识别官方额度端点。
+	require.Equal(t, PlatformMiniMax, (&Account{Platform: PlatformMiniMax, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"account_mode": AccountModeCoding,
+	}}).GetCodingPlanProvider())
+	require.Empty(t, (&Account{Platform: PlatformMiniMax, Credentials: map[string]any{"account_mode": AccountModePayG}}).GetCodingPlanProvider())
+	// 自定义中转不得把第三方 Key 发往官方额度端点。
+	require.Empty(t, (&Account{Platform: PlatformMiniMax, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"account_mode": AccountModeCoding,
+		"base_url":     "https://relay.example.com/v1",
+	}}).GetCodingPlanProvider())
+}
+
 // TestCNBalanceURL Kimi 固定端点；DeepSeek 基于 base_url 拼接。
 func TestCNBalanceURL(t *testing.T) {
 	t.Parallel()
@@ -303,6 +389,28 @@ func TestEvaluateAccountSchedulingThreshold_KimiCodingPlan(t *testing.T) {
 	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformKimi: 80}, now)
 	require.True(t, decision.ShouldPause)
 	require.Equal(t, PlatformKimi, decision.Platform)
+	require.Equal(t, "5h", decision.Window)
+	require.InDelta(t, 90.0, decision.UsedPercent, 1e-9)
+	require.NotNil(t, decision.Until)
+	require.True(t, reset.Equal(*decision.Until))
+}
+
+func TestEvaluateAccountSchedulingThreshold_MiniMaxCodingPlan(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
+	reset := now.Add(3 * time.Hour)
+	account := &Account{
+		Platform: PlatformMiniMax,
+		Extra: map[string]any{
+			"minimax_5h_used_percent":     90.0,
+			"minimax_5h_reset_at":         reset.Format(time.RFC3339),
+			"minimax_weekly_used_percent": 30.0,
+			"minimax_weekly_reset_at":     now.Add(7 * 24 * time.Hour).Format(time.RFC3339),
+		},
+	}
+	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformMiniMax: 80}, now)
+	require.True(t, decision.ShouldPause)
+	require.Equal(t, PlatformMiniMax, decision.Platform)
 	require.Equal(t, "5h", decision.Window)
 	require.InDelta(t, 90.0, decision.UsedPercent, 1e-9)
 	require.NotNil(t, decision.Until)
@@ -398,7 +506,7 @@ func TestNormalizeOpenAICompatiblePlatform_SchedulerExactMatch(t *testing.T) {
 	require.Equal(t, PlatformKimi, NormalizeOpenAICompatiblePlatform(PlatformKimi))
 	require.Equal(t, PlatformZhipu, NormalizeOpenAICompatiblePlatform(PlatformZhipu))
 	require.Equal(t, PlatformDeepseek, NormalizeOpenAICompatiblePlatform(PlatformDeepseek))
-	require.Equal(t, PlatformMinimax, NormalizeOpenAICompatiblePlatform(PlatformMinimax))
+	require.Equal(t, PlatformMiniMax, NormalizeOpenAICompatiblePlatform(PlatformMiniMax))
 	require.Equal(t, PlatformMiMo, NormalizeOpenAICompatiblePlatform(PlatformMiMo))
 	require.Equal(t, PlatformHunyuan, NormalizeOpenAICompatiblePlatform(PlatformHunyuan))
 	require.Equal(t, PlatformQwen, NormalizeOpenAICompatiblePlatform(PlatformQwen))
@@ -485,8 +593,8 @@ func TestBuildUpstreamModelsRequest_CNProviders(t *testing.T) {
 		{"zhipu default", PlatformZhipu, "", "https://open.bigmodel.cn/api/paas/v4/models"},
 		{"zhipu coding", PlatformZhipu, AccountModeCoding, "https://open.bigmodel.cn/api/coding/paas/v4/models"},
 		{"deepseek", PlatformDeepseek, "", "https://api.deepseek.com/v1/models"},
-		{"minimax payg", PlatformMinimax, AccountModePayG, "https://api.minimaxi.com/v1/models"},
-		{"minimax token plan", PlatformMinimax, AccountModeCoding, "https://api.minimaxi.com/v1/models"},
+		{"minimax payg", PlatformMiniMax, AccountModePayG, "https://api.minimaxi.com/v1/models"},
+		{"minimax token plan", PlatformMiniMax, AccountModeCoding, "https://api.minimaxi.com/v1/models"},
 		{"mimo payg", PlatformMiMo, AccountModePayG, "https://api.xiaomimimo.com/v1/models"},
 		{"mimo token plan", PlatformMiMo, AccountModeCoding, "https://token-plan-cn.xiaomimimo.com/v1/models"},
 	}
@@ -524,7 +632,7 @@ func TestGetAPIProtocol(t *testing.T) {
 	require.Equal(t, APIProtocolAnthropic, mk(PlatformKimi, APIProtocolAnthropic).GetAPIProtocol())
 	require.Equal(t, APIProtocolAnthropic, mk(PlatformDeepseek, APIProtocolAnthropic).GetAPIProtocol())
 	require.Equal(t, APIProtocolResponses, mk(PlatformDeepseek, APIProtocolResponses).GetAPIProtocol())
-	require.Equal(t, APIProtocolResponses, mk(PlatformMinimax, APIProtocolResponses).GetAPIProtocol())
+	require.Equal(t, APIProtocolResponses, mk(PlatformMiniMax, APIProtocolResponses).GetAPIProtocol())
 	require.Equal(t, APIProtocolResponses, mk(PlatformMiMo, APIProtocolResponses).GetAPIProtocol())
 	mimoTokenPlan := mk(PlatformMiMo, APIProtocolResponses)
 	mimoTokenPlan.Credentials["account_mode"] = AccountModeCoding
@@ -532,7 +640,9 @@ func TestGetAPIProtocol(t *testing.T) {
 	require.True(t, mimoTokenPlan.SupportsNativeResponses())
 	require.True(t, mk(PlatformMiMo, APIProtocolResponses).SupportsNativeResponses())
 	require.Equal(t, APIProtocolResponses, mk(PlatformKimi, APIProtocolResponses).GetAPIProtocol())
+	require.Equal(t, APIProtocolResponses, mk(PlatformMiniMax, APIProtocolResponses).GetAPIProtocol())
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformKimi, APIProtocolAdaptive).GetAPIProtocol())
+	require.Equal(t, APIProtocolAdaptive, mk(PlatformMiniMax, APIProtocolAdaptive).GetAPIProtocol())
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformZhipu, APIProtocolAdaptive).GetAPIProtocol())
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformDeepseek, APIProtocolAdaptive).GetAPIProtocol())
 	require.Equal(t, APIProtocolChatCompletions, mk(PlatformZhipu, APIProtocolResponses).GetAPIProtocol(), "zhipu 无 responses 端点")
@@ -545,6 +655,7 @@ func TestSupportsNativeCNResponses(t *testing.T) {
 	require.True(t, (&Account{Platform: PlatformDeepseek}).SupportsNativeCNResponses())
 	require.True(t, (&Account{Platform: PlatformKimi}).SupportsNativeCNResponses())
 	require.True(t, (&Account{Platform: PlatformKimi, Credentials: map[string]any{"account_mode": AccountModeCoding}}).SupportsNativeCNResponses())
+	require.True(t, (&Account{Platform: PlatformMiniMax}).SupportsNativeCNResponses())
 	require.False(t, (&Account{Platform: PlatformZhipu}).SupportsNativeCNResponses())
 	require.False(t, (&Account{Platform: PlatformOpenAI}).SupportsNativeCNResponses())
 }
@@ -565,8 +676,8 @@ func TestAdaptiveProtocolBaseURLs(t *testing.T) {
 		{"zhipu payg", PlatformZhipu, AccountModePayG, DefaultZhipuPayGBaseURL, DefaultZhipuAnthropicBaseURL, DefaultZhipuPayGBaseURL},
 		{"zhipu coding", PlatformZhipu, AccountModeCoding, DefaultZhipuCodingBaseURL, DefaultZhipuAnthropicBaseURL, DefaultZhipuCodingBaseURL},
 		{"deepseek", PlatformDeepseek, AccountModePayG, DefaultDeepseekBaseURL, DefaultDeepseekAnthropicBaseURL, DefaultDeepseekBaseURL},
-		{"minimax payg", PlatformMinimax, AccountModePayG, DefaultMinimaxBaseURL, DefaultMinimaxAnthropicBaseURL, DefaultMinimaxBaseURL},
-		{"minimax token plan", PlatformMinimax, AccountModeCoding, DefaultMinimaxBaseURL, DefaultMinimaxAnthropicBaseURL, DefaultMinimaxBaseURL},
+		{"minimax payg", PlatformMiniMax, AccountModePayG, DefaultMiniMaxBaseURL, DefaultMiniMaxAnthropicBaseURL, DefaultMiniMaxBaseURL},
+		{"minimax token plan", PlatformMiniMax, AccountModeCoding, DefaultMiniMaxBaseURL, DefaultMiniMaxAnthropicBaseURL, DefaultMiniMaxBaseURL},
 		{"mimo payg", PlatformMiMo, AccountModePayG, DefaultMiMoPayGBaseURL, DefaultMiMoPayGAnthropicBaseURL, DefaultMiMoPayGBaseURL},
 		{"mimo token plan", PlatformMiMo, AccountModeCoding, DefaultMiMoCodingBaseURL, DefaultMiMoCodingAnthropicBaseURL, DefaultMiMoCodingBaseURL},
 	}
@@ -626,8 +737,8 @@ func TestAnthropicProtocolBaseURL(t *testing.T) {
 		Platform: PlatformDeepseek, Type: AccountTypeAPIKey,
 		Credentials: map[string]any{"api_protocol": APIProtocolAnthropic},
 	}).GetAnthropicProtocolBaseURL())
-	require.Equal(t, DefaultMinimaxAnthropicBaseURL, (&Account{
-		Platform: PlatformMinimax, Type: AccountTypeAPIKey,
+	require.Equal(t, DefaultMiniMaxAnthropicBaseURL, (&Account{
+		Platform: PlatformMiniMax, Type: AccountTypeAPIKey,
 		Credentials: map[string]any{"api_protocol": APIProtocolAnthropic, "account_mode": AccountModeCoding},
 	}).GetAnthropicProtocolBaseURL())
 	require.Equal(t, DefaultMiMoCodingAnthropicBaseURL, (&Account{
@@ -705,7 +816,7 @@ func TestBuildOpenAIResponsesURLForPlatform(t *testing.T) {
 	require.Equal(t, "https://relay.example.com/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformDeepseek, "https://relay.example.com/v1"))
 	require.Equal(t, "https://api.openai.com/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformOpenAI, "https://api.openai.com"))
 	require.Equal(t, "https://open.bigmodel.cn/api/paas/v4/responses", buildOpenAIResponsesURLForPlatform(PlatformZhipu, "https://open.bigmodel.cn/api/paas/v4"))
-	require.Equal(t, "https://api.minimaxi.com/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformMinimax, DefaultMinimaxBaseURL))
+	require.Equal(t, "https://api.minimaxi.com/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformMiniMax, DefaultMiniMaxBaseURL))
 	require.Equal(t, "https://api.xiaomimimo.com/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformMiMo, DefaultMiMoPayGBaseURL))
 	require.Equal(t, "https://api.moonshot.cn/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformKimi, "https://api.moonshot.cn/v1"))
 	require.Equal(t, "https://api.kimi.com/coding/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformKimi, "https://api.kimi.com/coding/v1"))
@@ -773,7 +884,7 @@ func TestGetAnthropicAPIKeyAuthScheme_CNProvider(t *testing.T) {
 	zhipu.Extra = map[string]any{"anthropic_apikey_auth_scheme": "authorization_bearer"}
 	require.Equal(t, AnthropicAPIKeyAuthSchemeAuthorizationBearer, zhipu.GetAnthropicAPIKeyAuthScheme())
 
-	for _, platform := range []string{PlatformMinimax, PlatformMiMo} {
+	for _, platform := range []string{PlatformMiniMax, PlatformMiMo} {
 		account := &Account{Platform: platform, Type: AccountTypeAPIKey}
 		require.Equal(t, AnthropicAPIKeyAuthSchemeAuthorizationBearer, account.GetAnthropicAPIKeyAuthScheme())
 		account.Extra = map[string]any{"anthropic_apikey_auth_scheme": AnthropicAPIKeyAuthSchemeXAPIKey}

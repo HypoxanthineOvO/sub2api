@@ -71,7 +71,7 @@ describe('useModelWhitelist', () => {
     expect(getModelsByPlatform('minimax')).toContain('MiniMax-M2.7-highspeed')
     expect(getModelsByPlatform('minimax')).toContain('MiniMax-M2.5')
     expect(getModelsByPlatform('minimax')).toContain('MiniMax-M2.1-highspeed')
-    expect(getModelsByPlatform('minimax')).not.toContain('abab6.5-chat')
+    expect(getModelsByPlatform('minimax')).toContain('abab6.5-chat')
     expect(getModelsByPlatform('mimo')).toContain('mimo-v2.5')
   })
 

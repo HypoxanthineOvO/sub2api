@@ -113,7 +113,7 @@ func DetectModelPlatform(model string) (string, bool) {
 		case "deepseek":
 			return PlatformDeepseek, true
 		case "minimax", "minimaxi":
-			return PlatformMinimax, true
+			return PlatformMiniMax, true
 		case "mimo", "xiaomi":
 			return PlatformMiMo, true
 		case "hunyuan", "tencent":
@@ -156,8 +156,11 @@ func DetectModelPlatform(model string) (string, bool) {
 		return PlatformZhipu, true
 	case strings.HasPrefix(normalized, "deepseek-"):
 		return PlatformDeepseek, true
-	case strings.HasPrefix(normalized, "minimax-"):
-		return PlatformMinimax, true
+	case strings.HasPrefix(normalized, "minimax-"),
+		strings.HasPrefix(normalized, "abab5"),
+		strings.HasPrefix(normalized, "abab6"),
+		strings.HasPrefix(normalized, "abab7"):
+		return PlatformMiniMax, true
 	case strings.HasPrefix(normalized, "mimo-"):
 		return PlatformMiMo, true
 	case normalized == "hy3", normalized == "hy3-preview", normalized == "hy4-preview",
@@ -212,7 +215,7 @@ func (s *GatewayService) resolveCompositeRouteDecision(ctx context.Context, grou
 func isConcreteRequestPlatform(platform string) bool {
 	switch platform {
 	case PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok,
-		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMinimax, PlatformMiMo, PlatformHunyuan, PlatformQwen:
+		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformMiMo, PlatformHunyuan, PlatformQwen:
 		return true
 	default:
 		return false

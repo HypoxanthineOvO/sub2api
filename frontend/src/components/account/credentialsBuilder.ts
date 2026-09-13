@@ -257,6 +257,7 @@ export const GROK_BASE_URL_PRESETS: GrokBaseUrlPreset[] = [
 // 两者正交。同协议请求零转换直通，跨协议组合才走转换链。
 
 export type CnAccountMode = 'payg' | 'coding'
+export type CnProviderPlatform = 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'mimo' | 'hunyuan' | 'qwen'
 
 /** 支持原生 Responses 的供应商（deepseek / kimi / minimax / mimo）会在 adaptive 下按入站协议选择原生端点。 */
 export type CnApiProtocol = 'adaptive' | 'chat_completions' | 'anthropic' | 'responses'
@@ -279,9 +280,6 @@ export interface CnBaseUrlPreset {
   label: string
   url: string
 }
-
-/** 各供应商按账号类型 × API 协议分档的快捷端点（点击快速填充，输入框仍可自由填写）。 */
-export type CnProviderPlatform = 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'mimo' | 'hunyuan' | 'qwen'
 
 export type MiMoTokenPlanRegion = 'cn' | 'sgp' | 'eu'
 
@@ -315,11 +313,12 @@ export function mimoTokenPlanRegionFromURL(url: string): MiMoTokenPlanRegion {
   }
 }
 
-export function isCnProviderPlatform(platform: string): platform is CnProviderPlatform {
+export function isCNProviderPlatform(platform: string): platform is CnProviderPlatform {
   return platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' ||
     platform === 'minimax' || platform === 'mimo' || platform === 'hunyuan' || platform === 'qwen'
 }
 
+/** 各供应商按账号类型 × API 协议分档的快捷端点（点击快速填充，输入框仍可自由填写）。 */
 export const CN_BASE_URL_PRESETS: Record<CnProviderPlatform, CnBaseUrlPreset[]> = {
   kimi: [
     { mode: 'payg', protocol: 'chat_completions', label: 'Moonshot', url: 'https://api.moonshot.cn/v1' },
@@ -341,12 +340,19 @@ export const CN_BASE_URL_PRESETS: Record<CnProviderPlatform, CnBaseUrlPreset[]> 
     { mode: 'payg', protocol: 'responses', label: 'DeepSeek Responses', url: 'https://api.deepseek.com' }
   ],
   minimax: [
-    { mode: 'payg', protocol: 'chat_completions', label: 'MiniMax', url: 'https://api.minimaxi.com/v1' },
-    { mode: 'payg', protocol: 'anthropic', label: 'MiniMax Anthropic', url: 'https://api.minimaxi.com/anthropic' },
-    { mode: 'payg', protocol: 'responses', label: 'MiniMax Responses', url: 'https://api.minimaxi.com/v1' },
-    { mode: 'coding', protocol: 'chat_completions', label: 'MiniMax Token Plan', url: 'https://api.minimaxi.com/v1' },
-    { mode: 'coding', protocol: 'anthropic', label: 'MiniMax Token Plan Anthropic', url: 'https://api.minimaxi.com/anthropic' },
-    { mode: 'coding', protocol: 'responses', label: 'MiniMax Token Plan Responses', url: 'https://api.minimaxi.com/v1' }
+    { mode: 'payg', protocol: 'chat_completions', label: 'MiniMax CN', url: 'https://api.minimaxi.com/v1' },
+    { mode: 'payg', protocol: 'anthropic', label: 'MiniMax CN Anthropic', url: 'https://api.minimaxi.com/anthropic' },
+    { mode: 'payg', protocol: 'responses', label: 'MiniMax CN Responses', url: 'https://api.minimaxi.com/v1' },
+    { mode: 'payg', protocol: 'chat_completions', label: 'MiniMax Intl', url: 'https://api.minimax.io/v1' },
+    { mode: 'payg', protocol: 'anthropic', label: 'MiniMax Intl Anthropic', url: 'https://api.minimax.io/anthropic' },
+    { mode: 'payg', protocol: 'responses', label: 'MiniMax Intl Responses', url: 'https://api.minimax.io/v1' },
+    { mode: 'coding', protocol: 'chat_completions', label: 'MiniMax Coding CN', url: 'https://api.minimaxi.com/v1' },
+    { mode: 'coding', protocol: 'anthropic', label: 'MiniMax Coding CN Anthropic', url: 'https://api.minimaxi.com/anthropic' },
+    { mode: 'coding', protocol: 'responses', label: 'MiniMax Coding CN Responses', url: 'https://api.minimaxi.com/v1' },
+    { mode: 'coding', protocol: 'chat_completions', label: 'MiniMax Coding Intl', url: 'https://api.minimax.io/v1' },
+    { mode: 'coding', protocol: 'anthropic', label: 'MiniMax Coding Intl Anthropic', url: 'https://api.minimax.io/anthropic' },
+    { mode: 'coding', protocol: 'responses', label: 'MiniMax Coding Intl Responses', url: 'https://api.minimax.io/v1' }
+
   ],
   mimo: [
     { mode: 'payg', protocol: 'chat_completions', label: 'MiMo', url: 'https://api.xiaomimimo.com/v1' },

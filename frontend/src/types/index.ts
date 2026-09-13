@@ -273,6 +273,8 @@ export interface PublicSettings {
   channel_monitor_hide_throughput?: boolean
   /** When true, user monitor shows account quota/balance snapshots (default off). */
   channel_monitor_show_quota?: boolean
+  /** When true, user monitor hides the user ranking tab and /users payload. */
+  channel_monitor_hide_user_ranking?: boolean
   available_channels_enabled: boolean
   model_plaza_enabled: boolean
   model_plaza_require_auth: boolean
@@ -643,14 +645,14 @@ export interface AdminGroup extends Group {
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
-  models_list_config?: ModelsListConfig
+  model_allowlist?: ModelAllowlist
   codex_models_manifest_config?: CodexModelsManifestConfig
 
   // 分组排序
   sort_order: number
 }
 
-export interface ModelsListConfig {
+export interface ModelAllowlist {
   enabled: boolean
   models: string[]
 }
@@ -826,7 +828,7 @@ export interface CreateGroupRequest {
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
-  models_list_config?: ModelsListConfig
+  model_allowlist?: ModelAllowlist
   codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
@@ -892,7 +894,7 @@ export interface UpdateGroupRequest {
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
-  models_list_config?: ModelsListConfig
+  model_allowlist?: ModelAllowlist
   codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
@@ -1524,6 +1526,15 @@ export interface UpdateAccountRequest {
   upstream_billing_probe_enabled?: boolean
   upstream_billing_rate_sync_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
+}
+
+export type GrokMediaEligibilityMode = 'auto' | 'enabled' | 'disabled'
+
+export interface GrokMediaEligibilityState {
+  account_id: number
+  mode: GrokMediaEligibilityMode
+  eligible: boolean
+  reason: string
 }
 
 export interface CheckMixedChannelRequest {

@@ -1024,7 +1024,7 @@ func IsUpstreamBillingProbeIdentity(platform, accountType string) bool {
 	}
 	switch platform {
 	case PlatformOpenAI, PlatformAnthropic, PlatformGemini, PlatformAntigravity, PlatformGrok,
-		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMinimax, PlatformMiMo, PlatformHunyuan, PlatformQwen:
+		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformMiMo, PlatformHunyuan, PlatformQwen:
 		return true
 	default:
 		return false

@@ -448,7 +448,7 @@ func TestEvaluateAccountSchedulingThreshold_MiniMaxUsesLatestQuotaWindow(t *test
 	now := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
 	weeklyReset := now.Add(4 * 24 * time.Hour)
 	account := &Account{
-		Platform: PlatformMinimax,
+		Platform: PlatformMiniMax,
 		Extra: map[string]any{
 			"minimax_usage_updated_at":    now.Add(-time.Minute).Format(time.RFC3339),
 			"minimax_5h_used_percent":     95.0,
@@ -458,10 +458,10 @@ func TestEvaluateAccountSchedulingThreshold_MiniMaxUsesLatestQuotaWindow(t *test
 		},
 	}
 
-	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformMinimax: 80}, now)
+	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformMiniMax: 80}, now)
 
 	require.True(t, decision.ShouldPause)
-	require.Equal(t, PlatformMinimax, decision.Platform)
+	require.Equal(t, PlatformMiniMax, decision.Platform)
 	require.Equal(t, "weekly", decision.Window)
 	require.Equal(t, 90.0, decision.UsedPercent)
 	require.NotNil(t, decision.Until)

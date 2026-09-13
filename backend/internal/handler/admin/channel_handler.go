@@ -643,7 +643,7 @@ var platformToLiteLLMProvider = map[string]string{
 	service.PlatformKimi:        "moonshot",
 	service.PlatformZhipu:       "zhipu",
 	service.PlatformDeepseek:    "deepseek",
-	service.PlatformMinimax:     "minimax",
+	service.PlatformMiniMax:     "minimax",
 	service.PlatformMiMo:        "mimo",
 }
 

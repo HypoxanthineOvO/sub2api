@@ -1551,7 +1551,7 @@ import {
   cnProviderSupportsResponses,
   defaultCNAdaptiveBaseUrls,
   defaultCNBaseUrl,
-  isCnProviderPlatform,
+  isCNProviderPlatform,
   mimoTokenPlanBaseUrls,
   type CnAccountMode,
   type CnApiProtocol,
@@ -1615,7 +1615,7 @@ const bulkCNPlatform = computed<CnProviderPlatform | null>(() => {
     return null
   }
   const platform = targetSelectedPlatforms.value[0]
-  return isCnProviderPlatform(platform) ? platform : null
+  return isCNProviderPlatform(platform) ? platform : null
 })
 
 const allOpenAIPassthroughCapable = computed(() => {

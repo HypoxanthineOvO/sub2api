@@ -31,7 +31,7 @@ func TestLabDashboardSwitchesUsesFullRequestChain(t *testing.T) {
 }
 
 func TestLabDashboardAccountBillingNormalizesSubscriptionQuotaWindows(t *testing.T) {
-	for _, platform := range []string{PlatformZhipu, PlatformMinimax} {
+	for _, platform := range []string{PlatformZhipu, PlatformMiniMax} {
 		t.Run(platform, func(t *testing.T) {
 			account := &Account{
 				Platform:    platform,

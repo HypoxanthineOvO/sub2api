@@ -175,7 +175,7 @@ var providerAdapters = map[string]providerAdapter{
 	MonitorProviderKimi:     providerKimiChatAdapter,
 	MonitorProviderZhipu:    providerZhipuChatAdapter,
 	MonitorProviderDeepseek: providerDeepseekChatAdapter,
-	MonitorProviderMinimax:  providerMinimaxChatAdapter,
+	MonitorProviderMiniMax:  providerMiniMaxChatAdapter,
 	MonitorProviderMiMo:     providerMiMoChatAdapter,
 	MonitorProviderAnthropic: {
 		buildPath: func(string) string { return providerAnthropicPath },
@@ -200,7 +200,7 @@ var providerAdapters = map[string]providerAdapter{
 		buildBody: func(_, prompt string) ([]byte, error) {
 			return json.Marshal(map[string]any{
 				"contents": []map[string]any{
-					{"parts": []map[string]any{{"text": prompt}}},
+					{"role": "user", "parts": []map[string]any{{"text": prompt}}},
 				},
 				"generationConfig": map[string]any{"maxOutputTokens": monitorChallengeMaxTokens},
 			})
@@ -229,7 +229,7 @@ var providerZhipuChatAdapter = newOpenAICompatibleChatAdapter(providerZhipuPath)
 var providerDeepseekChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
 
 //nolint:gochecknoglobals // 静态只读适配器。
-var providerMinimaxChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
+var providerMiniMaxChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
 
 //nolint:gochecknoglobals // 静态只读适配器。
 var providerMiMoChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
@@ -472,7 +472,7 @@ var bodyMergeKeyDenyList = map[string]map[string]bool{
 	MonitorProviderOpenAI + ":" + MonitorAPIModeChatCompletions: {"model": true, "messages": true, "stream": true},
 	MonitorProviderOpenAI + ":" + MonitorAPIModeResponses:       {"model": true, "instructions": true, "input": true, "stream": true},
 	MonitorProviderDeepseek + ":" + MonitorAPIModeResponses:     {"model": true, "instructions": true, "input": true, "stream": true},
-	MonitorProviderMinimax + ":" + MonitorAPIModeResponses:      {"model": true, "instructions": true, "input": true, "stream": true},
+	MonitorProviderMiniMax + ":" + MonitorAPIModeResponses:      {"model": true, "instructions": true, "input": true, "stream": true},
 	MonitorProviderMiMo + ":" + MonitorAPIModeResponses:         {"model": true, "instructions": true, "input": true, "stream": true},
 	MonitorProviderGrok:      {"model": true, "messages": true, "stream": true},
 	MonitorProviderAnthropic: {"model": true, "messages": true},
@@ -481,7 +481,7 @@ var bodyMergeKeyDenyList = map[string]map[string]bool{
 	MonitorProviderKimi:     {"model": true, "messages": true, "stream": true},
 	MonitorProviderZhipu:    {"model": true, "messages": true, "stream": true},
 	MonitorProviderDeepseek: {"model": true, "messages": true, "stream": true},
-	MonitorProviderMinimax:  {"model": true, "messages": true, "stream": true},
+	MonitorProviderMiniMax:  {"model": true, "messages": true, "stream": true},
 	MonitorProviderMiMo:     {"model": true, "messages": true, "stream": true},
 }
 
@@ -506,7 +506,7 @@ func isOpenAICompatibleChatProvider(provider string) bool {
 	switch provider {
 	case MonitorProviderOpenAI, MonitorProviderGrok,
 		MonitorProviderKimi, MonitorProviderZhipu, MonitorProviderDeepseek,
-		MonitorProviderMinimax, MonitorProviderMiMo:
+		MonitorProviderMiniMax, MonitorProviderMiMo:
 		return true
 	default:
 		return false

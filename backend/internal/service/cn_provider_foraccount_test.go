@@ -46,7 +46,7 @@ func TestValidateCodingPlanAccount_Matrix(t *testing.T) {
 		{name: "payg has no quota endpoint", account: paygAccount(PlatformKimi), wantReason: "CN_QUOTA_NOT_CODING_PLAN"},
 		{name: "kimi coding ok", account: codingAccount(PlatformKimi)},
 		{name: "zhipu coding ok", account: codingAccount(PlatformZhipu)},
-		{name: "minimax token plan ok", account: codingAccount(PlatformMinimax)},
+		{name: "minimax token plan ok", account: codingAccount(PlatformMiniMax)},
 		{name: "mimo token plan has no quota endpoint", account: codingAccount(PlatformMiMo), wantReason: "CN_QUOTA_UNSUPPORTED_PLATFORM"},
 	}
 	for _, tc := range cases {
@@ -72,7 +72,7 @@ func TestValidatePayGAccount_Matrix(t *testing.T) {
 		{name: "coding has no balance endpoint", account: codingAccount(PlatformKimi), wantReason: "CN_BALANCE_CODING_PLAN"},
 		{name: "kimi payg ok", account: paygAccount(PlatformKimi)},
 		{name: "deepseek payg ok", account: paygAccount(PlatformDeepseek)},
-		{name: "minimax payg mode ok", account: paygAccount(PlatformMinimax)},
+		{name: "minimax payg mode ok", account: paygAccount(PlatformMiniMax)},
 		{name: "mimo payg mode ok", account: paygAccount(PlatformMiMo)},
 	}
 	for _, tc := range cases {
@@ -119,7 +119,7 @@ func TestCNProviderBalanceService_QueryBalanceForAccount_RejectsInvalidAccount(t
 	requireReason(t, err, "CN_BALANCE_INVALID_PLATFORM")
 	require.Zero(t, upstream.calls)
 
-	_, err = svc.QueryBalanceForAccount(context.Background(), paygAccount(PlatformMinimax))
+	_, err = svc.QueryBalanceForAccount(context.Background(), paygAccount(PlatformMiniMax))
 	requireReason(t, err, "CN_BALANCE_NO_ENDPOINT")
 	require.Zero(t, upstream.calls)
 

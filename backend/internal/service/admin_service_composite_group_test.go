@@ -215,8 +215,8 @@ func TestAdminService_CNProviderModelsListCandidates(t *testing.T) {
 	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek} {
 		require.Equal(t, want, defaultModelsListCandidateIDs(platform), "platform=%s", platform)
 	}
-	require.Equal(t, "MiniMax-M3", defaultModelsListCandidateIDs(PlatformMinimax)[0])
-	require.Contains(t, defaultModelsListCandidateIDs(PlatformMinimax), "MiniMax-M2.7-highspeed")
+	require.Equal(t, "MiniMax-M3", defaultModelsListCandidateIDs(PlatformMiniMax)[0])
+	require.Contains(t, defaultModelsListCandidateIDs(PlatformMiniMax), "MiniMax-M2.7-highspeed")
 	require.Equal(t, []string{"mimo-v2.5", "mimo-v2.5-pro"}, defaultModelsListCandidateIDs(PlatformMiMo))
 	require.Contains(t, defaultModelsListCandidateIDs(PlatformHunyuan), "hy-mt2-pro")
 	require.Contains(t, defaultModelsListCandidateIDs(PlatformQwen), "qwen3.7-plus")

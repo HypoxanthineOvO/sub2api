@@ -57,7 +57,7 @@ func (u *minimaxQuotaUpstream) DoWithTLS(
 func newMinimaxQuotaAccount() *Account {
 	return &Account{
 		ID:       71,
-		Platform: PlatformMinimax,
+		Platform: PlatformMiniMax,
 		Type:     AccountTypeAPIKey,
 		Status:   StatusActive,
 		Credentials: map[string]any{
@@ -101,7 +101,7 @@ const minimaxQuotaSuccessFixture = `{
 }`
 
 func TestParseMinimaxUsageTiers_UsesGeneralModelWindows(t *testing.T) {
-	tiers, err := parseMinimaxUsageTiers([]byte(minimaxQuotaSuccessFixture))
+	tiers, err := parseMiniMaxUsageTiers([]byte(minimaxQuotaSuccessFixture))
 	require.NoError(t, err)
 	require.Equal(t, []CNQuotaTier{
 		{
@@ -133,7 +133,7 @@ func TestParseMinimaxUsageTiers_FailsClosedOnInvalidSchema(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tiers, err := parseMinimaxUsageTiers([]byte(tt.body))
+			tiers, err := parseMiniMaxUsageTiers([]byte(tt.body))
 			require.Error(t, err)
 			require.Empty(t, tiers)
 		})
@@ -151,12 +151,12 @@ func TestCNProviderQuotaService_MiniMaxSuccess(t *testing.T) {
 	require.True(t, result.Success)
 	require.True(t, result.CredentialValid)
 	require.True(t, result.Persisted)
-	require.Equal(t, PlatformMinimax, result.Provider)
+	require.Equal(t, PlatformMiniMax, result.Provider)
 	require.Equal(t, http.StatusOK, result.StatusCode)
 	require.Len(t, result.Tiers, 2)
 	require.NotNil(t, upstream.request)
 	require.Equal(t, http.MethodGet, upstream.request.Method)
-	require.Equal(t, minimaxQuotaURL, upstream.request.URL.String())
+	require.Equal(t, minimaxQuotaURL(DefaultMiniMaxBaseURL), upstream.request.URL.String())
 	require.Equal(t, "Bearer sk-minimax-test", upstream.request.Header.Get("Authorization"))
 	require.Equal(t, "application/json", upstream.request.Header.Get("Accept"))
 	require.Equal(t, "application/json", upstream.request.Header.Get("Content-Type"))
@@ -202,7 +202,7 @@ func TestCNProviderQuotaService_MiniMaxBusinessErrorsDoNotPersist(t *testing.T) 
 func TestCNProviderQuotaService_MiniMaxOfficialHostMustBeAllowlisted(t *testing.T) {
 	repo := &minimaxQuotaProbeRepo{account: newMinimaxQuotaAccount()}
 	upstream := &minimaxQuotaUpstream{statusCode: http.StatusOK, body: minimaxQuotaSuccessFixture}
-	svc := NewCNProviderQuotaService(repo, nil, upstream, cnProbeAllowlistConfig("api.minimaxi.com"))
+	svc := NewCNProviderQuotaService(repo, nil, upstream, cnProbeAllowlistConfig("inference.example.com"))
 
 	_, err := svc.QueryUsage(context.Background(), repo.account.ID)
 

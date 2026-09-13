@@ -149,7 +149,7 @@ func (s *CNProviderBalanceCheckService) runOnce() {
 	}
 	// 智谱和 MiniMax 无公开 PAYG 余额端点，仅进 Coding Plan 额度探测。
 	if s.quotaService != nil {
-		for _, platform := range []string{PlatformZhipu, PlatformMinimax} {
+		for _, platform := range []string{PlatformZhipu, PlatformMiniMax} {
 			accounts, err := s.accountRepo.ListByPlatform(context.Background(), platform)
 			if err != nil {
 				log.Printf("[CNBalance] list %s accounts failed: %v", platform, err)
