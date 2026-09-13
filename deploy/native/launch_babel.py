@@ -9,7 +9,8 @@ import subprocess
 import sys
 
 
-def remote_command(archive):
+def remote_command(archive, entry='release_launch.py'):
+    if entry not in ('release_launch.py', 'release_resume.py'): raise ValueError('unsupported rollout entry')
     with archive.open('rb') as stream:
         checksum = hashlib.file_digest(stream, 'sha256').hexdigest()
     remote = '/home/heyx/VSP-Sub2API/' + archive.name
@@ -40,7 +41,7 @@ with tarfile.open(snapshot) as tar:
     assert len(members)<100 and all(m.isfile() and Path(m.name).name==m.name for m in members)
     assert sum(m.size for m in members)<1024**3
     tar.extractall(payload,filter='data')
-subprocess.run(['/usr/bin/python3','-I',str(payload/'release_launch.py')],check=True)
+subprocess.run(['/usr/bin/python3','-I',str(payload/{entry!r})],check=True)
 '''
     return shlex.join(['sudo', '/usr/bin/python3', '-I', '-c', code])
 
@@ -49,13 +50,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('archive', type=Path)
     parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--resume', action='store_true', help='apply the reviewed controller repair and resume the known rolled-back launch')
     args = parser.parse_args()
     if os.geteuid() == 0: parser.error('run without local sudo')
-    command = remote_command(args.archive.resolve())
+    command = remote_command(args.archive.resolve(), 'release_resume.py' if args.resume else 'release_launch.py')
     if args.dry_run: print(command); return
     if not sys.stdin.isatty(): parser.error('use an interactive terminal for Babel sudo')
     print('LIVE ROLLOUT: short downtime, private backup, upgrade and opening; enter Babel sudo password when prompted.', flush=True)
     subprocess.run(['ssh', '-t', '-o', 'BatchMode=yes', 'Babel', command], check=True)
 
 
-if __name__ == '__main__': main()
+if __name__ == '__main__':
+    try: main()
+    except subprocess.CalledProcessError:
+        raise SystemExit('Rollout stopped. Do not repeat the installer; return the stage/status output for recovery.')

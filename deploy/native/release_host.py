@@ -10,6 +10,7 @@ import stat
 import subprocess
 import tempfile
 import time
+import urllib.error
 import urllib.request
 
 from release_core import Engine, ID, ReleaseError, canonical, decode, digest, read_package, validate_manifest
@@ -131,7 +132,9 @@ class Host:
 
     def active(self): return load(STATE / "active.json")
     def journal(self): return load(self.job_path) if self.job_path.exists() else None
-    def save_journal(self, journal): atomic(self.job_path, {**journal, "job": self.job, "updated": time.time()})
+    def save_journal(self, journal):
+        probe = {"public_probe": self.public_probe} if hasattr(self, "public_probe") else {}
+        atomic(self.job_path, {**journal, **probe, "job": self.job, "updated": time.time()})
 
     def manifest(self, record):
         return validate_manifest(load(ROOT / "releases" / slot_record(record)["release"] / "manifest.json"))
@@ -339,7 +342,21 @@ class Host:
             if elapsed >= self.cfg["observe_seconds"] and not any(generation_alive(g) for g in generations): break
             if elapsed > self.cfg["drain_seconds"]: raise ReleaseError("old Nginx requests did not drain; refusing completion")
             time.sleep(1)
-        headers = request("https://api.vsplab.tech/health")
+        try:
+            headers = request("https://api.vsplab.tech/health")
+        except urllib.error.HTTPError as error:
+            allowed = (self.cfg.get("allow_cloudflare_403_origin_probe") is True
+                       and error.code == 403 and error.headers.get("Server", "").lower() == "cloudflare")
+            error.close()
+            if not allowed: raise
+            # Administrator-approved degraded verification for an already-blocked
+            # edge probe. Still verify the actual cloudflared origin's identity.
+            headers = request("http://127.0.0.1:8081/health")
+            if headers.get("X-VSP-Deployment") != candidate["slot"] + ":" + candidate["release"]:
+                raise ReleaseError("cloudflared origin is not the candidate release")
+            self.public_probe = {"status": "cloudflare_403", "origin_verified": True, "public_access_verified": False}
+            self.save_journal(self.journal())
+            return
         if headers.get("X-VSP-Deployment") != candidate["slot"] + ":" + candidate["release"]:
             raise ReleaseError("public ingress is not the candidate release")
 

@@ -1,5 +1,13 @@
 # Babel 数据库维护入口
 
+## 2026-09-14 首次真实上线回滚与续跑
+
+第一次执行已成功安装发布器，但作业 `dd44aa89607943869ca58dcb7ad9d58b` 在 A 的 initial_switching/observe 阶段因公网 HTTPError 回滚。只读复核：旧 Blue 已恢复（PID 184855），19820 健康 200，Green 停止，B/schema 升级尚未启动。Babel 的真实回源 8081 健康 200、公网 `.tech` 返回 Cloudflare 403。此前发现的探针拦截与强制公网门禁冲突，没有在首发前处理，这是控制器准备遗漏。
+
+管理员续跑补丁只替换已核对 SHA 的 `release_host.py`，备份原文件/配置，设置 root-only 的 `allow_cloudflare_403_origin_probe=true`。仅 Server=cloudflare 且 HTTP 403 可降级为 8081 回源身份核对；其他错误、非 Cloudflare 403、错误 deployment identity 仍失败。作业显式记录 `public_access_verified=false`，不把回源成功当成公网已通。不修改 WAF，不扩大 Agent sudoers。
+
+`launch_babel.py <补丁包> --resume` 使用同样的哈希固定/root 私有解包路径，执行 `release_resume.py`。它只接受指定已回滚作业、原 baseline 和未被更改的控制器；不重装、不重编 A/B、不覆盖冻结原包。修正后继续 A→B→目录，仍保留真实备份与恢复边界。公网403、BaseURL和自定义价卡是独立待办。
+
 本地实现已完成，尚未安装或执行于生产。只支持当前已审阅的 v0.2.1 → v0.2.4 / SQL 235–237，不是任意数据库运维框架。普通 `vsp-release deploy/rollback` 仍拒绝 SQL 清单差异，Agent sudoers 不增加数据库权限。
 
 2026-09-14 用户明确改为直接真实上线、接受短时停机及未演练风险。一次性上线时在管理员 stage 命令增加 `--accept-unrehearsed`，仅跳过演练证明，不跳过真实停机备份；该选择持久化在请求和作业记录中。用户已授权串行启动/健康检查后继续放量，无须再次等待每段人工确认。下面默认流程保留供后续维护参考。

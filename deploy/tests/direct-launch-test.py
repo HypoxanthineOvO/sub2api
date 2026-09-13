@@ -20,6 +20,14 @@ from release_launch import wait_job
 
 
 class LaunchTests(unittest.TestCase):
+    def test_resume_entry_is_allowlisted_and_cannot_reinstall(self):
+        with self.assertRaises(ValueError): remote_command(Path('/unused'), '../arbitrary.py')
+        source = (NATIVE / 'release_resume.py').read_text()
+        self.assertNotIn('install-release-control.py', source)
+        self.assertIn("failed['phase'] != 'rolled_back'", source)
+        self.assertIn("current['job'] != FAILED_JOB", source)
+        self.assertIn("digest(LIB / 'release_host.py') != OLD_HOST_SHA", source)
+
     def test_wait_does_not_mistake_queued_or_recovery_for_success(self):
         with patch('release_launch.load', side_effect=[{'job': 'a'}, {'phase': 'queued'}, {'phase': 'schema_ready'}]), patch('release_launch.info', return_value={'ActiveState': 'inactive'}), patch('release_launch.time.sleep'):
             self.assertEqual(wait_job('schema_ready'), 'a')

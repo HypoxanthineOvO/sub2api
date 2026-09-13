@@ -259,6 +259,38 @@ class InitialTests(unittest.TestCase):
 
 
 class ClientTests(unittest.TestCase):
+    def test_cloudflare_origin_fallback_is_explicit_narrow_and_audited(self):
+        import urllib.error
+        import release_host as module
+        candidate = {'slot': 'green', 'release': 'a' * 12 + '-' + 'b' * 12}
+        expected = candidate['slot'] + ':' + candidate['release']
+        def host(enabled):
+            h = object.__new__(module.Host); h.cfg = {'observe_seconds': 0, 'drain_seconds': 1, 'allow_cloudflare_403_origin_probe': enabled}
+            h.job = 'a' * 32; h.job_path = Path('/unused')
+            return h
+        for enabled, code, server in ((False, 403, 'cloudflare'), (True, 500, 'cloudflare'), (True, 403, 'nginx')):
+            h = host(enabled)
+            error = urllib.error.HTTPError('https://api.vsplab.tech/health', code, 'blocked', {'Server': server}, io.BytesIO())
+            with patch.object(h, 'healthy'), patch.object(module, 'request', side_effect=error) as request:
+                with self.assertRaises(urllib.error.HTTPError): h.observe(candidate, [])
+                self.assertEqual(request.call_count, 1)
+        h = host(True)
+        error = urllib.error.HTTPError('https://api.vsplab.tech/health', 403, 'blocked', {'Server': 'cloudflare'}, io.BytesIO())
+        with patch.object(h, 'healthy'), patch.object(h, 'journal', return_value={'phase': 'observing'}), patch.object(module, 'request', side_effect=[error, {'X-VSP-Deployment': expected}]) as request, patch.object(module, 'atomic') as saved:
+            h.observe(candidate, [])
+            self.assertEqual(request.call_args.args[0], 'http://127.0.0.1:8081/health')
+            h.save_journal({'phase': 'complete'})
+            self.assertEqual(saved.call_args.args[1]['public_probe'], {'status': 'cloudflare_403', 'origin_verified': True, 'public_access_verified': False})
+
+    def test_cloudflare_fallback_still_rejects_wrong_origin_identity(self):
+        import urllib.error
+        import release_host as module
+        h = object.__new__(module.Host)
+        h.cfg = {'observe_seconds': 0, 'drain_seconds': 1, 'allow_cloudflare_403_origin_probe': True}
+        error = urllib.error.HTTPError('https://api.vsplab.tech/health', 403, 'blocked', {'Server': 'cloudflare'}, io.BytesIO())
+        with patch.object(h, 'healthy'), patch.object(module, 'request', side_effect=[error, {'X-VSP-Deployment': 'wrong'}]):
+            with self.assertRaises(core.ReleaseError): h.observe({'slot': 'green', 'release': 'a'*12+'-'+'b'*12}, [])
+
     def test_manual_rollback_does_not_restart_a_running_target(self):
         import release_host as module
         h = module.Host.__new__(module.Host); h.rolling_back = True
