@@ -4,6 +4,8 @@
 
 2026-09-14 用户明确改为直接真实上线、接受短时停机及未演练风险。一次性上线时在管理员 stage 命令增加 `--accept-unrehearsed`，仅跳过演练证明，不跳过真实停机备份；该选择持久化在请求和作业记录中。用户已授权串行启动/健康检查后继续放量，无须再次等待每段人工确认。下面默认流程保留供后续维护参考。
 
+`launch_babel.py <已上传 bundle.tar>` 是本次 Genesis 交互入口：远端 sudo 将包流式复制到 root 私有目录，验证完整 SHA 后只提取普通文件，执行冻结的 `release_launch.py`。一次串行执行安装、A 首启、B 带备份迁移、健康校验后开放，再更新独立目录 JSON；不重复安装已有发布器。控制器任务由 systemd 持续执行，终端中断后先查状态，不盲目重跑。一旦某步骤失败，后续不执行；目录发布失败不会阻断已通过验收的 B 开放。官方 BaseURL 设置和现有 DeepSeek 自定义价卡仍需后续后台/API 核对，不在启动脚本里直接写 SQL。
+
 ## 已完成的管理员只读预检（2026-09-14）
 
 用户已返回两次检查结果：生产仍为 blue active / green inactive，数据库 `sub2api`（OID `22068`、owner `sub2api`）约 3.90 GiB，迁移 288 条且 235–237 未执行。应用角色没有 superuser/createdb 权限；这是保留的权限边界，不做提权。用户使用 `sudo -u postgres psql` 经 `/run/vsp-sub2api-production-postgresql:5432` 只读确认管理员为 `postgres`，集群标识为 `7683195181800662940`。
