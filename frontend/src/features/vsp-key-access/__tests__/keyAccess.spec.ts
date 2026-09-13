@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { ref } from 'vue'
 import KeyAccessModal from '../KeyAccessModal.vue'
-import { clientConfig, clients } from '../clientConfigs'
+import { clientConfig, clients, defaultLocations, isDiscouraged } from '../clientConfigs'
 import { catalogUrl, combinedCredentials, rootBaseUrl, tomlString, shellString, powershellString } from '../credentials'
 import { parseCatalog } from '../catalog'
 
@@ -48,12 +48,18 @@ describe('VSP key access', () => {
     expect(copy).toHaveBeenLastCalledWith(longKey)
     wrapper.unmount()
   })
-  it('shows exactly six clients and preserves the complete metadata', async () => {
+  it('shows eight clients with explicit discouraged labels and preserves the complete metadata', async () => {
     const wrapper = render()
     await button(wrapper, '客户端配置').trigger('click'); await flushPromises()
-    expect(wrapper.findAll('button[aria-pressed]').map(node => node.text())).toEqual(clients.map(client => client.name))
-    expect(wrapper.text()).not.toContain('Claude Code')
-    expect(wrapper.text()).not.toContain('OpenCode')
+    expect(wrapper.findAll('button[aria-pressed]').map(node => node.text())).toEqual(clients.map(client => client.name + (isDiscouraged(client.id) ? '（不推荐）' : '')))
+    expect(clients).toHaveLength(8)
+    await button(wrapper, 'Claude Code（不推荐）').trigger('click')
+    expect(wrapper.find('[role="note"]').text()).toContain('不推荐')
+    await button(wrapper, 'Kimi Code').trigger('click')
+    expect(wrapper.get('[data-testid="default-locations"]').text()).toContain('~/.kimi-code/config.toml')
+    expect(wrapper.text()).not.toContain('~/.kimi/config.toml')
+    await button(wrapper, '复制默认路径').trigger('click')
+    expect(copy).toHaveBeenLastCalledWith('~/.kimi-code/config.toml')
     await button(wrapper, '复制完整目录 JSON').trigger('click')
     expect(JSON.parse(copy.mock.calls.at(-1)![0])).toEqual(catalog)
     await button(wrapper, 'Pi').trigger('click')
@@ -97,6 +103,29 @@ describe('VSP key access', () => {
 })
 
 describe('configuration contract', () => {
+  it('uses only static default locations for every client, independent of user data', () => {
+    for (const client of clients) {
+      const paths = defaultLocations(client.id)
+      expect(paths[0].content).toBe(client.path)
+      expect(paths[1].content).toMatch(/^%USERPROFILE%\\/)
+      expect(paths[0].content).not.toContain('/home/heyx')
+    }
+    expect(defaultLocations('zcode')[0].content).toBe('~/.zcode/v2/config.json')
+    expect(defaultLocations('opencode')[2].content).toBe('~/.local/share/opencode/auth.json')
+  })
+  it('emits Claude and OpenCode JSON with literal credentials and all model IDs', () => {
+    const secret = 'sk-"\\\n{env:EXAMPLE}'
+    const claude = JSON.parse(clientConfig('claude', props.baseUrl, secret)[0].content)
+    expect(claude.env).toEqual({ ANTHROPIC_BASE_URL: 'https://api.example.test', ANTHROPIC_AUTH_TOKEN: secret })
+    const blocks = clientConfig('opencode', props.baseUrl, secret, catalog)
+    const config = JSON.parse(blocks[0].content)
+    const providers = Object.values(config.provider) as { npm: string; options: { baseURL: string }; models: Record<string, unknown> }[]
+    expect(providers.flatMap(provider => Object.keys(provider.models)).sort()).toEqual(catalog.models.map(model => model.id).sort())
+    expect(providers.every(provider => provider.options.baseURL === 'https://api.example.test/v1')).toBe(true)
+    expect(blocks[0].content).not.toContain(secret)
+    expect(Object.values(JSON.parse(blocks[1].content)).every(value => (value as { key: string }).key === secret)).toBe(true)
+    expect(clientConfig('vsp-codex', props.baseUrl, secret)[0].content).toContain(`experimental_bearer_token = ${tomlString(secret)}`)
+  })
   it('normalizes URLs once and correctly quotes credential strings', () => {
     expect(rootBaseUrl('https://example.test/v1///')).toBe('https://example.test')
     expect(catalogUrl('https://example.test/v1')).toBe('https://example.test/vsp/models')

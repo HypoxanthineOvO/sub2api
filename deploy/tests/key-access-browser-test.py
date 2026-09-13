@@ -2,6 +2,7 @@
 """Exercise the real Vue component against synthetic metadata on a local Vite server."""
 import json
 import os
+import re
 import tomllib
 from pathlib import Path
 from playwright.sync_api import sync_playwright
@@ -68,7 +69,7 @@ def main():
             page.screenshot(path=str(OUTPUT / 'credentials-mobile.png'))
             page.get_by_role('button', name='客户端配置', exact=True).click()
             page.get_by_role('button', name='复制完整目录 JSON').wait_for()
-            assert len(dialog.locator('button[aria-pressed]').all()) == 6
+            assert len(dialog.locator('button[aria-pressed]').all()) == 8
             assert all('authorization' not in headers and 'cookie' not in headers for headers in requests)
             page.get_by_role('button', name='Pi', exact=True).click()
             pi = json.loads(dialog.locator('pre').first.inner_text())
@@ -79,6 +80,12 @@ def main():
                 assert config
                 if client == 'Kimi Code':
                     assert sorted(model['model'] for model in config['models'].values()) == sorted(model_ids)
+                    assert '~/.kimi-code/config.toml' in dialog.locator('[data-testid="default-locations"]').inner_text()
+            for client in ['Claude Code', 'OpenCode']:
+                page.get_by_role('button', name=re.compile(re.escape(client) + r'\s*（不推荐）')).click()
+                assert '不推荐' in dialog.get_by_role('note').inner_text()
+                for block in dialog.locator('pre').all(): assert json.loads(block.inner_text())
+            assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
             page.get_by_role('button', name='Pi', exact=True).click()
             page.evaluate("document.documentElement.classList.add('dark')")
             page.wait_for_function("getComputedStyle(document.querySelector('[aria-pressed=true]')).color === 'rgb(255, 255, 255)'")
@@ -87,7 +94,7 @@ def main():
             dialog.wait_for(state='hidden')
             assert not errors, errors
             context.close(); browser.close()
-        print('PASS: complete key display, long-key wrapping, exact clipboard, no default fetch, six clients, full catalog, no auth headers, mobile layout, Escape; screenshots saved')
+        print('PASS: complete key display, exact clipboard, no default fetch, eight clients, default paths, discouraged labels, full catalog, no auth headers, mobile layout, Escape; screenshots saved')
     finally:
         if errors:
             print('Browser errors:', errors)

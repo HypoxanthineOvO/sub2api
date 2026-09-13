@@ -19,10 +19,19 @@
         <button ref="backButton" class="btn btn-secondary min-h-11" @click="goBack">{{ labels.back }}</button>
         <p class="text-sm text-gray-600 dark:text-dark-300">{{ labels.intro }}</p>
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-3" role="group" :aria-label="labels.clients">
-          <button v-for="client in clients" :key="client.id" class="btn min-h-11" :class="selected === client.id ? 'btn-primary' : 'btn-secondary'"
-            :aria-pressed="selected === client.id" @click="selected = client.id">{{ client.name }}</button>
+          <button v-for="client in clients" :key="client.id" class="btn min-h-11 flex-col" :class="selected === client.id ? 'btn-primary' : 'btn-secondary'"
+            :aria-pressed="selected === client.id" @click="selected = client.id">{{ client.name }}<span v-if="isDiscouraged(client.id)" class="whitespace-nowrap text-xs">（{{ labels.discouraged }}）</span></button>
         </div>
-        <p class="break-words text-sm text-gray-600 dark:text-dark-300">{{ current.path }}</p>
+        <p v-if="isDiscouraged(selected)" role="note" class="rounded-lg border border-amber-400 p-3 text-sm text-amber-800 dark:text-amber-300">{{ labels.discouragedHint }}</p>
+        <section class="space-y-2 rounded-lg border border-gray-200 p-3 dark:border-dark-600" data-testid="default-locations">
+          <h4 class="text-sm font-medium">{{ labels.defaultLocation }}</h4>
+          <div v-for="location in defaultLocations(selected)" :key="location.label" class="flex flex-wrap items-center gap-2 text-sm">
+            <span>{{ location.label }}</span><code class="min-w-0 break-all">{{ location.content }}</code>
+            <button class="btn btn-secondary min-h-11" @click="copy(location.content)">{{ labels.copyPath }}</button>
+          </div>
+          <p class="text-sm text-gray-600 dark:text-dark-300">{{ labels.locationHint }}</p>
+        </section>
+        <p v-if="selected === 'zcode'" class="text-sm text-gray-600 dark:text-dark-300">{{ labels.zcodeHint }}</p>
         <a v-if="current.docs" :href="current.docs" target="_blank" rel="noopener noreferrer" class="inline-block py-2 text-primary-600 underline dark:text-primary-400">{{ labels.docs }}</a>
         <p class="text-sm text-gray-600 dark:text-dark-300">{{ labels.modelHint }}</p>
         <p v-if="!base" role="alert">{{ labels.invalid }}</p>
@@ -58,7 +67,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import { useAppStore } from '@/stores/app'
 import { catalogUrl, combinedCredentials, rootBaseUrl } from './credentials'
 import { fetchCatalog, type ModelCatalog } from './catalog'
-import { clients, clientConfig, type ClientId } from './clientConfigs'
+import { clients, clientConfig, defaultLocations, isDiscouraged, type ClientId } from './clientConfigs'
 import { messages } from './messages'
 
 const props = defineProps<{ show: boolean; apiKey: string; baseUrl: string; platform: string | null; allowMessagesDispatch?: boolean }>()
@@ -82,7 +91,7 @@ const base = computed(() => {
 const combined = computed(() => base.value ? combinedCredentials(base.value, props.apiKey) : '')
 const catalogHref = computed(() => base.value ? catalogUrl(base.value) : '')
 const current = computed(() => clients.find(client => client.id === selected.value)!)
-const needsCatalog = computed(() => selected.value === 'pi' || selected.value === 'kimi')
+const needsCatalog = computed(() => ['pi', 'kimi', 'opencode'].includes(selected.value))
 const configs = computed(() => {
   if (!advanced.value || !base.value || (needsCatalog.value && !catalog.value)) return { blocks: [], error: false }
   try { return { blocks: clientConfig(selected.value, base.value, props.apiKey, catalog.value), error: false } }
