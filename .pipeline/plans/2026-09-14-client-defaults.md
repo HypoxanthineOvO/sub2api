@@ -1,5 +1,13 @@
 # 默认 API 端点与客户端默认配置位置微调
 
+## 已上线并验收
+
+普通发布作业 `a3afa75491464223a896d82a8d1643b6` complete，executor inactive。应用源码 `f6c33441c315`，当前 Green release `f6c33441c315-d7d502064cb6` / PID 188754；旧 Blue `af8b6ea163e6-1da8e3276114` / PID 186879 保留为同 schema 回滚目标。正式包迁移清单与旧版逐项相同；本次上传和部署由 Agent 使用已安装免密入口完成，没有要求用户输入 sudo、没有执行 schema 维护。
+
+实际回源只读验收：health HTTP 200 且 deployment identity 匹配 Green；`/api/v1/settings/public` HTTP 200 且 `api_base_url=https://api.vsplab.tech`；`/vsp/models` 仍为 64 条、SHA `256f507c2bb0ebd07221de7206675ee7daf1ad2ed604c60fbb400bd4b0a79a06`。PG/Redis/general proxy/Nginx/cloudflared 主 PID 仍为 912/926/876/989/788，没有重启这些服务。公网探针 Cloudflare403 的已知降级记录保留，public_access_verified=false。
+
+前端已发布，用户刷新页面即可取得新资源；本机 Chromium 验证八个入口及复制/路径布局，不冒称已用用户生产账号登录验收。构建日志 `dist/validation/schema-release/build-client-defaults.log`，前端/浏览器日志 `dist/validation/client-defaults/`，截图 `dist/validation/key-access/clients-mobile-dark.png`。
+
 用户要求：默认端点从 .cn 改为 .tech；六个已有客户端只展示官方/本项目默认位置，不读用户文件或寻找自定义位置；新增 Claude Code 和 OpenCode，但明确标为不推荐。用户授权自行完成，沿已安装普通免密发布流程交付；不重复 schema 迁移。
 
 ## 实现
