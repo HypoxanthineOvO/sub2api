@@ -653,13 +653,13 @@ func TestTryModelFilePricing_WithCacheTokens(t *testing.T) {
 
 func TestTryModelFilePricing_DeepSeekPeakPricing(t *testing.T) {
 	weekday := func(hour, minute int) time.Time {
-		return time.Date(2026, time.August, 24, hour, minute, 0, 0, time.UTC)
+		return time.Date(2026, time.September, 14, hour, minute, 0, 0, time.UTC)
 	}
 	for _, model := range []struct {
 		name                          string
 		input, output, cacheReadPrice float64
 	}{
-		{"deepseek-v4-flash", 2.2e-7, 6.6e-7, 7e-9},
+		{"deepseek-v4-flash", 1.5e-7, 6e-7, 3e-9},
 		{"deepseek-v4-pro", 6.6e-7, 1.98e-6, 2.2e-8},
 	} {
 		for _, usage := range []struct {
@@ -688,8 +688,8 @@ func TestTryModelFilePricing_DeepSeekPeakPricing(t *testing.T) {
 					{"afternoon_peak_start", weekday(6, 0), 2},
 					{"afternoon_peak_last_minute", weekday(9, 59), 2},
 					{"afternoon_peak_end", weekday(10, 0), 1},
-					{"saturday", time.Date(2026, time.August, 22, 2, 0, 0, 0, time.UTC), 1},
-					{"sunday", time.Date(2026, time.August, 23, 7, 0, 0, 0, time.UTC), 1},
+					{"saturday", time.Date(2026, time.September, 12, 2, 0, 0, 0, time.UTC), 1},
+					{"sunday", time.Date(2026, time.September, 13, 7, 0, 0, 0, time.UTC), 1},
 				} {
 					t.Run(slot.name, func(t *testing.T) {
 						cost := tryModelFilePricing(bs, model.name, tokens, "", slot.at)
@@ -703,7 +703,7 @@ func TestTryModelFilePricing_DeepSeekPeakPricing(t *testing.T) {
 }
 
 func TestResolveAccountStatsCost_DeepSeekPricingPriority(t *testing.T) {
-	peak := time.Date(2026, time.August, 24, 2, 0, 0, 0, time.UTC)
+	peak := time.Date(2026, time.September, 14, 2, 0, 0, 0, time.UTC)
 	for _, tt := range []struct {
 		name         string
 		customRule   bool
@@ -711,7 +711,7 @@ func TestResolveAccountStatsCost_DeepSeekPricingPriority(t *testing.T) {
 		noChannel    bool
 		want         float64
 	}{
-		{name: "catalog", want: 1000 * 2.2e-7 * 2},
+		{name: "catalog", want: 1000 * 1.5e-7 * 2},
 		{name: "custom_rule", customRule: true, want: 1},
 		{name: "custom_rule_before_customer_price", customRule: true, applyPricing: true, want: 1},
 		{name: "customer_price", applyPricing: true, want: 0.75},

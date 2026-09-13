@@ -575,7 +575,7 @@ func TestOpenAIGatewayServiceRecordUsage_DeepSeekAccountStatsUsesRequestPricingA
 		name        string
 		offPeakCost float64
 	}{
-		{"deepseek-v4-flash", 1000*2.2e-7 + 500*6.6e-7 + 1000*7e-9},
+		{"deepseek-v4-flash", 1000*1.5e-7 + 500*6e-7 + 1000*3e-9},
 		{"deepseek-v4-pro", 1000*6.6e-7 + 500*1.98e-6 + 1000*2.2e-8},
 	} {
 		for _, slot := range []struct {
@@ -583,8 +583,8 @@ func TestOpenAIGatewayServiceRecordUsage_DeepSeekAccountStatsUsesRequestPricingA
 			pricingAt  time.Time
 			multiplier float64
 		}{
-			{"peak", time.Date(2026, time.August, 24, 2, 0, 0, 0, time.UTC), 2},
-			{"off_peak", time.Date(2026, time.August, 24, 12, 0, 0, 0, time.UTC), 1},
+			{"peak", time.Date(2026, time.September, 14, 2, 0, 0, 0, time.UTC), 2},
+			{"off_peak", time.Date(2026, time.September, 14, 12, 0, 0, 0, time.UTC), 1},
 		} {
 			t.Run(model.name+"/"+slot.name, func(t *testing.T) {
 				usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
