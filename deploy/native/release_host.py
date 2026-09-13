@@ -192,8 +192,7 @@ class Host:
         if candidate["worker_gate"] != 1 or (previous["worker_gate"] != 1 and not allow_legacy):
             raise ReleaseError("maintenance_required: normal publish/rollback requires worker-aware binaries on both sides")
         if allow_legacy and previous["worker_gate"] != 0: raise ReleaseError("initial maintenance is only for the legacy baseline")
-        if previous["migrations"] != candidate["migrations"]:
-            raise ReleaseError("migration_review_required: automatic schema changes are not permitted")
+        self.check_migrations(previous, candidate)
         if not self.rolling_back: self.healthy(old, direct=False)
         target_running = self.rolling_back and info(unit(new["slot"]))["MainPID"] != "0"
         if not target_running and has_connections(PORTS[new["slot"]]):
@@ -214,6 +213,10 @@ class Host:
             raise ReleaseError("insufficient memory headroom for a candidate and warm rollback")
         if not self.rolling_back and shutil.disk_usage(ROOT).free < self.cfg["min_disk_free"]:
             raise ReleaseError("insufficient disk headroom")
+
+    def check_migrations(self, previous, candidate):
+        if previous["migrations"] != candidate["migrations"]:
+            raise ReleaseError("migration_review_required: automatic schema changes are not permitted")
 
     def write_slot(self, record, legacy_disabled=False):
         record = slot_record(record)

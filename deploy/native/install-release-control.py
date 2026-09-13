@@ -26,7 +26,8 @@ from release_core import ReleaseError, digest, read_package
 from release_host import CONFIG, ROOT, SLOT_ENV, STATE, Host, atomic, info, run, trusted
 
 LIB = Path("/usr/local/libexec/vsp-sub2api-release")
-SOURCES = ("release_core.py", "release_host.py", "release_control.py", "release_runner.py", "release_client.py", "release_initial.py")
+SOURCES = ("release_core.py", "release_host.py", "release_control.py", "release_runner.py", "release_client.py", "release_initial.py",
+           "release_inspect.py", "release_schema.py", "release_schema_core.py", "release_schema_host.py", "release_schema_data.py", "schema_policy.json")
 PROBE = """# Internal release verifier; never exposed beyond loopback.
 server {
     listen 127.0.0.1:19820;
@@ -40,6 +41,14 @@ server {
     }
     location / { return 404; }
 }
+server {
+    listen 127.0.0.1:19823;
+    server_name localhost;
+    add_header X-VSP-Maintenance closed always;
+    add_header Retry-After 60 always;
+    default_type application/json;
+    location / { return 503 '{"status":"maintenance"}'; }
+}
 """
 
 
@@ -48,9 +57,15 @@ def main():
     parser.add_argument("--baseline", type=Path, required=True)
     args = parser.parse_args()
     if os.geteuid() != 0 or socket.gethostname() != "iZuf668tiyo0blc17ihbtyZ": parser.error("administrator installation must run on Babel")
-    targets = [CONFIG, ROOT, STATE, LIB, SLOT_ENV, Path("/usr/local/bin/vsp-release"), Path("/etc/systemd/system/vsp-sub2api-release.service"), Path("/etc/nginx/conf.d/vsp-release-probe.conf"), Path("/etc/sudoers.d/vsp-sub2api-release")]
+    maintenance_upstream = Path('/etc/nginx/sub2api-upstreams/maintenance.conf')
+    backup_root = Path('/var/backups/vsp-sub2api-schema')
+    targets = [CONFIG, ROOT, STATE, LIB, SLOT_ENV, backup_root, maintenance_upstream, Path("/usr/local/bin/vsp-release"), Path("/etc/systemd/system/vsp-sub2api-release.service"), Path("/etc/nginx/conf.d/vsp-release-probe.conf"), Path("/etc/sudoers.d/vsp-sub2api-release")]
     if any(p.exists() or p.is_symlink() for p in targets): parser.error("managed paths already exist; do not overwrite an installation")
-    for parent in (ROOT.parent, STATE.parent, LIB.parent, Path("/usr/local/bin"), Path("/etc/systemd/system"), Path("/etc/nginx/conf.d"), Path("/etc/sudoers.d")):
+    if not LIB.parent.exists():
+        trusted(LIB.parent.parent)
+        LIB.parent.mkdir(mode=0o755)
+        LIB.parent.chmod(0o755)
+    for parent in (ROOT.parent, STATE.parent, LIB.parent, backup_root.parent, maintenance_upstream.parent, Path("/usr/local/bin"), Path("/etc/systemd/system"), Path("/etc/nginx/conf.d"), Path("/etc/sudoers.d")):
         trusted(parent)
     source = Path(__file__).resolve().parent
     if any(not (source / name).is_file() for name in SOURCES): parser.error("installer must be delivered with its reviewed Python sources")
@@ -64,7 +79,8 @@ def main():
     before = {u: info(u)["MainPID"] for u in ("vsp-sub2api-app-slot@blue.service", "vsp-postgresql@production.service", "vsp-redis@production.service", "vsp-mihomo-production@general.service", "nginx.service", "cloudflared.service")}
     if any(pid == "0" for pid in before.values()) or info("vsp-sub2api-app-slot@green.service")["ActiveState"] != "inactive": parser.error("expected active blue and stopped green")
     if Path("/etc/nginx/sub2api-upstreams/active.conf").resolve().name != "blue.conf": parser.error("expected blue ingress")
-    if ":19820 " in run("ss", "-lnt"): parser.error("internal probe port is occupied")
+    ports = run('ss', '-lnt')
+    if any(f':{port} ' in ports for port in (19820, 19823)): parser.error("internal probe/maintenance port is occupied")
     run("nginx", "-t"); run("visudo", "-c")
     manifest = read_package(args.baseline)
     if manifest["worker_gate"] != 0: parser.error("this one-time installer expects the existing legacy baseline; managed adoption must be reviewed separately")
@@ -83,6 +99,7 @@ def main():
     for directory in (ROOT, ROOT / "releases", ROOT / "slots", STATE, STATE / "jobs", SLOT_ENV, LIB):
         directory.mkdir(mode=0o755, parents=True)
         os.chown(directory, 0, 0); directory.chmod(0o755)
+    backup_root.mkdir(mode=0o700)
     os.chown(STATE, 0, group.gr_gid); STATE.chmod(0o750)
     atomic(CONFIG, cfg)
     for name in ("request.lock", "operation.lock", "workers.lock"):
@@ -109,6 +126,7 @@ def main():
     try:
         shutil.copyfile(slot_unit, unit_path); unit_path.chmod(0o644)
         probe_path.write_text(PROBE); probe_path.chmod(0o644)
+        maintenance_upstream.write_text('server 127.0.0.1:19823;\n'); maintenance_upstream.chmod(0o644)
         run("systemctl", "daemon-reload")
         run("nginx", "-t"); run("nginx", "-s", "reload")
         deadline = time.monotonic() + 15
@@ -126,6 +144,7 @@ def main():
         sudoers.unlink(missing_ok=True)
         shutil.copy2(archive / unit_path.name, unit_path)
         probe_path.unlink(missing_ok=True)
+        maintenance_upstream.unlink(missing_ok=True)
         run("systemctl", "daemon-reload"); run("nginx", "-t"); run("nginx", "-s", "reload")
         raise
     print(f"Installed restricted controller. Baseline {manifest['id']}; archive {archive}")

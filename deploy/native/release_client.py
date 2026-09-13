@@ -56,7 +56,7 @@ def build(repo, commit):
             tar.extractall(src, filter="data")
         env = {k: v for k, v in os.environ.items() if k in {"PATH", "HOME", "TMPDIR", "http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "no_proxy"}}
         env.update(CGO_ENABLED="0", GOOS="linux", GOARCH="amd64")
-        toolchain = {"go": command(["go", "version"], env=env), "node": command(["node", "--version"], env=env), "pnpm": command(["pnpm", "--version"], env=env)}
+        toolchain = {"go": command(["go", "version"], cwd=src / "backend", env=env), "node": command(["node", "--version"], cwd=src / "frontend", env=env), "pnpm": command(["pnpm", "--version"], cwd=src / "frontend", env=env)}
         command(["pnpm", "install", "--frozen-lockfile", "--ignore-scripts"], cwd=src / "frontend", capture=False, env=env)
         command(["pnpm", "run", "build"], cwd=src / "frontend", capture=False, env=env)
         command(["go", "test", "./internal/service", "./cmd/server", "-run", "^TestDeployment", "-count=1"], cwd=src / "backend", capture=False, env=env)

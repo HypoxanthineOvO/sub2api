@@ -12,6 +12,48 @@ from release_core import InitialEngine, Engine, ReleaseError, TERMINAL
 from release_host import CONFIG, STATE, Host, atomic, load, trusted
 
 
+def schema_operation(req, initial, recovering):
+    from release_schema_core import SchemaEngine
+    from release_schema_host import SchemaHost
+    if recovering and initial['phase'] in TERMINAL: return
+    host = None
+    try:
+        host = SchemaHost(req['job'])
+        engine = SchemaEngine(host)
+        if recovering:
+            if initial.get('schema_rehearsal'):
+                host.recover_rehearsal()
+            elif 'old' in initial:
+                engine.recover(force=req['operation'] == 'schema-abort')
+            else:
+                host.save_journal({'phase': 'rejected', 'error': 'interrupted_before_schema_transaction'})
+        elif req['operation'] == 'schema-rehearse':
+            host.save_journal({'phase': 'schema_rehearsing', 'schema_rehearsal': True})
+            host.rehearse(req['database'])
+        elif req['operation'] == 'schema-stage':
+            host.import_package(req['release'])
+            old = host.active()
+            candidate = {'slot': 'green' if old['slot'] == 'blue' else 'blue', 'release': req['release']}
+            engine.stage(candidate, req['expected_old'], req['database'])
+        elif req['operation'] == 'schema-activate':
+            engine.activate()
+        elif req['operation'] == 'schema-abort':
+            engine.abort()
+        else:
+            raise ReleaseError('unknown schema operation')
+    except Exception:
+        path = STATE / 'jobs' / (req['job'] + '.json')
+        current = load(path)
+        if recovering:
+            current.update(phase='recovery_failed', error='schema_recovery_failed')
+        elif 'old' not in current and not current.get('schema_rehearsal'):
+            current.update(phase='rejected', error='schema_preflight_failed')
+        else:
+            current['error'] = 'schema_operation_failed'
+        atomic(path, current)
+        raise ReleaseError('schema operation failed; inspect status and private backup checkpoint') from None
+
+
 def main():
     if os.geteuid() != 0: raise ReleaseError("runner is administrator-only")
     cfg = load(CONFIG)
@@ -23,6 +65,9 @@ def main():
         req = load(STATE / "request.json")
         job_path = STATE / "jobs" / (req["job"] + ".json")
         initial = load(job_path)
+        if req['operation'].startswith('schema-'):
+            schema_operation(req, initial, '--recover' in sys.argv)
+            return
         if "--recover" in sys.argv:
             if initial["phase"] in TERMINAL: return
             if "old" not in initial:
