@@ -28,9 +28,10 @@ beforeEach(() => { vi.clearAllMocks(); copy.mockResolvedValue(true); fetchCatalo
 afterEach(() => { vi.useRealTimers() })
 
 describe('VSP key access', () => {
-  it('defaults to three copy actions, masks the key and makes no network request', async () => {
+  it('defaults to three copy actions, displays the full key and makes no network request', async () => {
     const wrapper = render()
-    expect(wrapper.text()).not.toContain(props.apiKey)
+    expect(wrapper.text()).toContain(props.apiKey)
+    expect(wrapper.text()).not.toContain('••••')
     expect(wrapper.findAll('button')).toHaveLength(4)
     expect(fetchCatalog).not.toHaveBeenCalled()
     await button(wrapper, '复制 BaseURL').trigger('click')
@@ -39,6 +40,12 @@ describe('VSP key access', () => {
     expect(copy.mock.calls.map(args => args[0])).toEqual([
       'https://api.example.test', props.apiKey, 'BaseURL: https://api.example.test, APIKey: sk-test-only'
     ])
+    const longKey = `sk-example-${'0123456789abcdef'.repeat(4)}`
+    await wrapper.setProps({ apiKey: longKey })
+    const keyText = wrapper.findAll('p').find(node => node.text() === longKey)!
+    expect(keyText.classes()).toContain('break-all')
+    await button(wrapper, '复制 APIKey').trigger('click')
+    expect(copy).toHaveBeenLastCalledWith(longKey)
     wrapper.unmount()
   })
   it('shows exactly six clients and preserves the complete metadata', async () => {

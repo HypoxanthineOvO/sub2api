@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 FRONTEND = ROOT / 'frontend'
 OUTPUT = ROOT / 'dist/validation/key-access'
 FIXTURE = FRONTEND / '.vsp-key-access-test.html'
+TEST_KEY = 'sk-example-only-' + '0123456789abcdef' * 4
 HTML = '''<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body><div id="app"></div><script type="module">
 import {createApp, ref, h} from 'vue'; import {createPinia} from 'pinia';
@@ -31,7 +32,7 @@ def main():
     }
     model_ids = [model['id'] for model in data['models']]
     with FIXTURE.open('x') as file:
-        file.write(HTML)
+        file.write(HTML.replace('sk-example-only', TEST_KEY))
     requests = []
     errors = []
     try:
@@ -56,13 +57,14 @@ def main():
             page.get_by_role('button', name='打开测试弹窗').click()
             dialog = page.get_by_role('dialog')
             dialog.wait_for()
-            assert 'sk-example-only' not in dialog.inner_text()
+            assert TEST_KEY in dialog.inner_text()
             assert not requests
             page.get_by_role('button', name='复制 BaseURL + APIKey', exact=True).click()
-            assert page.evaluate('navigator.clipboard.readText()') == 'BaseURL: https://api.vsplab.tech, APIKey: sk-example-only'
+            assert page.evaluate('navigator.clipboard.readText()') == f'BaseURL: https://api.vsplab.tech, APIKey: {TEST_KEY}'
             page.screenshot(path=str(OUTPUT / 'credentials-desktop.png'))
             page.set_viewport_size({'width': 375, 'height': 812})
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+            assert page.get_by_text(TEST_KEY, exact=True).evaluate('(element) => element.scrollWidth <= element.clientWidth')
             page.screenshot(path=str(OUTPUT / 'credentials-mobile.png'))
             page.get_by_role('button', name='客户端配置', exact=True).click()
             page.get_by_role('button', name='复制完整目录 JSON').wait_for()
@@ -85,7 +87,7 @@ def main():
             dialog.wait_for(state='hidden')
             assert not errors, errors
             context.close(); browser.close()
-        print('PASS: masked credentials, exact clipboard, no default fetch, six clients, full catalog, no auth headers, mobile layout, Escape; screenshots saved')
+        print('PASS: complete key display, long-key wrapping, exact clipboard, no default fetch, six clients, full catalog, no auth headers, mobile layout, Escape; screenshots saved')
     finally:
         if errors:
             print('Browser errors:', errors)

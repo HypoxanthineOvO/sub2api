@@ -60,7 +60,7 @@
 使用 API Key
 
 BaseURL  https://api.vsplab.tech          [复制 BaseURL]
-APIKey   隐藏显示                        [复制 APIKey]
+APIKey   完整显示，长 Key 自动换行         [复制 APIKey]
 
 [复制 BaseURL + APIKey]
 
@@ -73,7 +73,7 @@ APIKey   隐藏显示                        [复制 APIKey]
 BaseURL: https://api.vsplab.tech, APIKey: <完整APIKey>
 ```
 
-- 复制完整 Key，不复制遮罩；成功/失败反馈复用现有 useClipboard 与 Toast。
+- 按用户审阅意见，直接展示并复制完整 Key，不加遮罩或显示开关；成功/失败反馈复用现有 useClipboard 与 Toast。
 - 默认不查询模型目录、不下载文件、不生成 CLI 安装命令。只有进入需要模型配置的客户端界面时才加载必要信息。
 - Key 不写日志、localStorage、埋点或外部链接；不新增保存 Key 的后端 API。
 - 沿用 BaseDialog、现有明暗主题和图标，支持键盘、窄屏和关闭后取消异步请求，不另换 UI 库或字体。

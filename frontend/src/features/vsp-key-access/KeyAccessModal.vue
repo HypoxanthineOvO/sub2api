@@ -9,7 +9,7 @@
         </div>
         <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-600">
           <p class="mb-2 text-sm font-medium text-gray-600 dark:text-dark-300">APIKey</p>
-          <p class="font-mono text-sm text-gray-900 dark:text-dark-100">{{ apiKey ? '••••••••••••••••' : labels.emptyKey }}</p>
+          <p class="break-all font-mono text-sm text-gray-900 dark:text-dark-100">{{ apiKey || labels.emptyKey }}</p>
           <button class="btn btn-secondary mt-3 min-h-11 w-full" :disabled="!apiKey.trim()" @click="copy(apiKey)">{{ labels.key }}</button>
         </div>
         <button class="btn btn-primary min-h-11 w-full" :disabled="!base || !apiKey.trim()" @click="copy(combined)">{{ labels.both }}</button>

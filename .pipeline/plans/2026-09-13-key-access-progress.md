@@ -4,7 +4,7 @@
 
 ## 已实现
 
-1. 独立 `frontend/src/features/vsp-key-access/` 模块：默认 BaseURL、APIKey、组合复制三个动作；组合文本保持 `BaseURL: xxx, APIKey: yyy` 一行。Key 默认遮罩，复制完整值，空 Key 禁止复制。
+1. 独立 `frontend/src/features/vsp-key-access/` 模块：默认 BaseURL、APIKey、组合复制三个动作；组合文本保持 `BaseURL: xxx, APIKey: yyy` 一行。用户认可手机版，并明确要求直接显示完整 API Key；已移除遮罩，长 Key 自动换行，复制完整值，空 Key 禁止复制。
 2. 六个可选客户端入口：Codex、Pi、ZCode、Kimi Code、VSP-Codex、VSPi。无 Claude Code/OpenCode 入口，不删除后端协议。Provider 配置不强制先选模型，不设置默认模型、不做可用性查询。
 3. 进入高级配置才读取 `/vsp/models`，无 Authorization/Cookie、不跳转，有 4 MiB 上限与 8 秒超时，关闭/换地址/换 Key 时取消。请求失败提示重试；同一弹窗重读失败保留最后有效目录。原始 JSON 全字段、全模型保留。
 4. Pi/Kimi 按协议生成配置；64 个声明全部保留，包括隐藏条目。VSPi 直接配置 `vsp-models` 数据源。Codex 两种发行版使用各自目录和 Provider ID，Key 通过环境变量提供；ZCode 给 GUI 字段和完整 ID 列表，不覆写内部配置文件。
@@ -23,7 +23,7 @@
 ## 验证证据
 
 - 前端全量 275 个测试文件、2012 项测试通过；新模块 12 项专项测试通过，lint 通过，Vue 类型检查及生产前端构建通过。
-- 实际 Chromium + Vue 组件验证：遮罩、精确剪贴板文本、默认无请求、六个入口、读取完整 64 条目录、不带认证头、Pi JSON 与四份 TOML 解析、375px 窄屏、暗色、Escape。临时 HTML、Vite 进程自动清理。
+- 实际 Chromium + Vue 组件验证：完整 Key 展示及长 Key 换行、精确剪贴板文本、默认无请求、六个入口、读取完整 64 条目录、不带认证头、Pi JSON 与四份 TOML 解析、375px 窄屏、暗色、Escape。临时 HTML、Vite 进程自动清理。
 - 目录工具 5 项测试通过，含真实私有 Nginx：完整 JSON、CORS、缓存头、拒绝 POST，以及非法数据、修订倒退和不可变产物。
 - VSPi 目录发现/合并测试 34 项通过，agent-core-v2 typecheck 通过，导入边界检查通过。回归覆盖未知模型显式能力、低修订拒绝覆盖和用户 overrides。
 - Go 发布执行权 service/server 定向检查通过；本轮不改 Sub2API 后端逻辑，包含新前端的 embed 构建通过，版本输出为 0.2.4。开发验证二进制在记录 SHA 后删除，历史生产产物保留；这不是正式发布包。
