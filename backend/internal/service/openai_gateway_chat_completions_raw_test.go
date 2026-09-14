@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +20,77 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+// The upstream boundary emulates the strict role validation reported by Chat
+// clients. Routing, model mapping, request construction and response accounting
+// use the real gateway for both streaming and non-streaming requests.
+type strictRoleUpstream struct {
+	httpUpstreamRecorder
+}
+
+func (u *strictRoleUpstream) Do(req *http.Request, proxyURL string, accountID int64, concurrency int) (*http.Response, error) {
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		return nil, err
+	}
+	req.Body = io.NopCloser(bytes.NewReader(body))
+	status, contentType := http.StatusOK, "application/json"
+	result := `{"id":"example","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":9,"completion_tokens":1,"total_tokens":10}}`
+	for _, message := range gjson.GetBytes(body, "messages").Array() {
+		if message.Get("role").String() == "developer" {
+			status = http.StatusBadRequest
+			result = "{\"error\":{\"message\":\"messages[0].role: unknown variant `developer`\",\"type\":\"invalid_request_error\"}}"
+		}
+	}
+	if status == http.StatusOK && gjson.GetBytes(body, "stream").Bool() {
+		contentType = "text/event-stream"
+		result = "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"pong\"},\"finish_reason\":\"stop\"}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":1,\"total_tokens\":10}}\n\ndata: [DONE]\n\n"
+	}
+	u.resp = &http.Response{StatusCode: status, Header: http.Header{"Content-Type": {contentType}}, Body: io.NopCloser(strings.NewReader(result))}
+	return u.httpUpstreamRecorder.Do(req, proxyURL, accountID, concurrency)
+}
+
+func TestForwardAsChatCompletions_StrictRoleMixedPool(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, stream := range []bool{false, true} {
+		for _, target := range []struct{ platform, model, base string }{
+			{"deepseek", "deepseek-v4.1-flash", "https://api.deepseek.com"},
+			{"kimi", "k3", "https://api.kimi.com/coding"},
+			{"zhipu", "glm-5.3", "https://open.bigmodel.cn/api/paas/v4"},
+			{"openai", "deepseek-v4.1-flash", "https://api.deepseek.com"},
+			{"openai", "k3-256k", "https://api.kimi.com/coding"},
+		} {
+			t.Run(fmt.Sprintf("%s/%s/stream=%t", target.platform, target.model, stream), func(t *testing.T) {
+				body := []byte(fmt.Sprintf(`{"model":"example-alias","messages":[{"role":"developer","content":"Keep these instructions."},{"role":"user","content":"ping"}],"stream":%t,"max_tokens":10}`, stream))
+				recorder := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(recorder)
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+				upstream := &strictRoleUpstream{}
+				svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+				account := rawChatCompletionsTestAccount()
+				account.Platform = target.platform
+				account.Credentials["base_url"] = target.base
+				account.Credentials["api_protocol"] = "chat_completions"
+				account.Credentials["model_mapping"] = map[string]any{"example-alias": target.model}
+				account.Extra = map[string]any{openai_compat.ExtraKeyResponsesSupported: false}
+				for range 2 {
+					result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+					require.NoError(t, err)
+					require.Equal(t, 9, result.Usage.InputTokens)
+					require.Equal(t, 1, result.Usage.OutputTokens)
+					require.Equal(t, target.model, gjson.GetBytes(upstream.lastBody, "model").String())
+					require.Equal(t, "system", gjson.GetBytes(upstream.lastBody, "messages.0.role").String())
+					require.Equal(t, "Keep these instructions.", gjson.GetBytes(upstream.lastBody, "messages.0.content").String())
+					require.Equal(t, "developer", gjson.GetBytes(body, "messages.0.role").String())
+					require.Contains(t, recorder.Body.String(), "pong")
+					if stream {
+						require.Contains(t, recorder.Body.String(), "data: [DONE]")
+					}
+				}
+			})
+		}
+	}
+}
 
 func TestBuildOpenAIChatCompletionsURL(t *testing.T) {
 	t.Parallel()
