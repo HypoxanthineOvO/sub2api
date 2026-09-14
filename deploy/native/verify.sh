@@ -15,7 +15,7 @@ if grep -Eq '^(Requires|PartOf)=' "$repo_root/ops/systemd/vsp-sub2api-app-slot@.
   echo 'App slot must not control data-plane units' >&2
   exit 1
 fi
-for test in native-retirement-test.py proxy-retirement-execution-test.py managed-release-test.py schema-release-test.py direct-launch-test.py; do
+for test in native-retirement-test.py proxy-retirement-execution-test.py managed-release-test.py schema-release-test.py direct-launch-test.py db-maint-test.py; do
   PYTHONDONTWRITEBYTECODE=1 python3 "$repo_root/deploy/tests/$test"
 done
 echo 'release source, slot isolation, retirement and transaction checks passed'
